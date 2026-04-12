@@ -362,10 +362,11 @@ server.tool(
   "zpl_history",
   "View history of past ZPL analyses. Shows recent questions, scores, and results. Useful for comparing over time or recalling past decisions.",
   {
-    limit: z.number().int().min(1).max(100).optional().default(20).describe("Number of recent entries to show"),
-    clear: z.boolean().optional().default(false).describe("If true, clears all history and returns count of deleted entries"),
+    limit: z.number().int().min(1).max(100).optional().describe("Number of recent entries to show (default: 20)"),
+    clear: z.boolean().optional().describe("If true, clears all history"),
   },
-  async ({ limit, clear }) => {
+  async ({ limit: rawLimit, clear }) => {
+    const limit = rawLimit ?? 20;
     if (clear) {
       const count = clearHistory();
       return { content: [{ type: "text" as const, text: `Cleared ${count} history entries.` }] };

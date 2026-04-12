@@ -76,9 +76,10 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
     "Export ZPL analysis history as structured JSON or CSV-formatted text. Useful for creating reports, importing into spreadsheets, or archiving past analyses.",
     {
       format: z.enum(["json", "csv"]).default("csv").describe("Export format"),
-      limit: z.number().int().min(1).max(500).optional().default(50).describe("Number of entries to export"),
+      limit: z.number().int().min(1).max(500).optional().describe("Number of entries to export (default: 50)"),
     },
-    async ({ format, limit }) => {
+    async ({ format, limit: rawLimit }) => {
+      const limit = rawLimit ?? 50;
       const history = getHistory(limit);
       if (history.length === 0) {
         return { content: [{ type: "text" as const, text: "No history to export. Run some analyses first (zpl_ask, zpl_compute, zpl_analyze, etc.)." }] };

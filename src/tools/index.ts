@@ -19,5 +19,5 @@ export function registerAllTools(server: Server, getClient: () => ZPLEngineClien
   registerSecurityTools(server, getClient);  // 3 tools
   registerCryptoTools(server, getClient);    // 4 tools
   registerUniversalTools(server, getClient); // 4 tools
-  registerMetaTools(server, getClient);      // 3 tools
+  registerMetaTools(server, getClient);      // 4 tools (batch, export, usage, account)
 }

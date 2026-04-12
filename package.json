@@ -35,7 +35,12 @@
     "bias-detection",
     "portfolio"
   ],
-  "author": "Zero Point Logic <cicicalex20@gmail.com>",
+  "author": "Alex Cicic — Zero Point Logic <cicicalex20@gmail.com>",
+  "homepage": "https://zeropointlogic.io",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeropointlogic/engine-mcp"
+  },
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1"

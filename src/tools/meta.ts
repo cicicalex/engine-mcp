@@ -1,5 +1,5 @@
 /**
- * Meta tools — 3 utility tools for batch, export, and usage tracking.
+ * Meta tools — 4 utility tools for batch, export, usage, and account info.
  */
 
 import { z } from "zod";
@@ -8,12 +8,24 @@ import { clampD, ainSignal } from "./helpers.js";
 import { ZPLEngineClient } from "../engine-client.js";
 import { getHistory, addHistory } from "../store.js";
 
+/** Plan details for display */
+const PLAN_INFO: Record<string, { price: string; maxD: number; tokens: string; rate: string; keys: number }> = {
+  free:          { price: "Free",     maxD: 9,   tokens: "5,000",      rate: "60/min", keys: 1 },
+  basic:         { price: "$10/mo",   maxD: 16,  tokens: "10,000",     rate: "60/min", keys: 1 },
+  pro:           { price: "$29/mo",   maxD: 25,  tokens: "50,000",     rate: "60/min", keys: 3 },
+  gamepro:       { price: "$69/mo",   maxD: 32,  tokens: "150,000",    rate: "60/min", keys: 5 },
+  studio:        { price: "$149/mo",  maxD: 48,  tokens: "500,000",    rate: "60/min", keys: 10 },
+  agent:         { price: "$199/mo",  maxD: 48,  tokens: "2,000,000",  rate: "60/min", keys: 20 },
+  enterprise:    { price: "$499/mo",  maxD: 64,  tokens: "10,000,000", rate: "60/min", keys: 25 },
+  enterprise_xl: { price: "$999/mo",  maxD: 100, tokens: "50,000,000", rate: "60/min", keys: 50 },
+};
+
 export function registerMetaTools(server: Server, getClient: () => ZPLEngineClient) {
 
   // --- zpl_batch: run multiple computations at once ---
   server.tool(
     "zpl_batch",
-    "Run multiple ZPL Engine computations in a single call. Provide an array of (d, bias) pairs. Returns all AIN scores. Efficient for bulk analysis.",
+    "Run multiple ZPL Engine computations in a single call. Provide an array of (d, bias) pairs. Returns all AIN scores. Efficient for bulk analysis. Max 50 jobs per call.",
     {
       jobs: z.array(z.object({
         label: z.string().describe("Label for this computation"),
@@ -61,7 +73,7 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
   // --- zpl_export: export history as structured data ---
   server.tool(
     "zpl_export",
-    "Export ZPL analysis history as structured JSON or CSV-formatted text. Useful for creating reports or importing into spreadsheets.",
+    "Export ZPL analysis history as structured JSON or CSV-formatted text. Useful for creating reports, importing into spreadsheets, or archiving past analyses.",
     {
       format: z.enum(["json", "csv"]).default("csv").describe("Export format"),
       limit: z.number().int().min(1).max(500).optional().default(50).describe("Number of entries to export"),
@@ -69,14 +81,13 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
     async ({ format, limit }) => {
       const history = getHistory(limit);
       if (history.length === 0) {
-        return { content: [{ type: "text" as const, text: "No history to export." }] };
+        return { content: [{ type: "text" as const, text: "No history to export. Run some analyses first (zpl_ask, zpl_compute, zpl_analyze, etc.)." }] };
       }
 
       if (format === "json") {
         return { content: [{ type: "text" as const, text: "```json\n" + JSON.stringify(history, null, 2) + "\n```" }] };
       }
 
-      // CSV format
       let csv = "id,timestamp,tool,question,domain,ain_scores\n";
       for (const h of history) {
         const scores = Object.entries(h.ain_scores).map(([k, v]) => `${k}:${v}`).join(";");
@@ -87,52 +98,166 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
     }
   );
 
-  // --- zpl_usage: token usage estimation ---
+  // --- zpl_usage: full account + usage dashboard ---
   server.tool(
     "zpl_usage",
-    "Estimate token usage and remaining budget. Shows how many tokens you've used in history, estimated monthly usage, and what operations you can still do with remaining tokens.",
+    "Full account dashboard — shows your current plan, token usage this month, remaining budget, rate limits, max dimension allowed, monthly reset date, and what operations you can still do. Warns if tokens are running low.",
     {
-      monthly_limit: z.number().optional().describe("Your monthly token limit (check your plan). Free=5000, Basic=10000, Pro=50000."),
+      plan: z.enum(["free", "basic", "pro", "gamepro", "studio", "agent", "enterprise", "enterprise_xl"]).optional().default("free").describe("Your current plan (check zeropointlogic.io/dashboard)"),
     },
-    async ({ monthly_limit }) => {
+    async ({ plan }) => {
       const history = getHistory(500);
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const daysLeft = Math.ceil((monthEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-      // Count tokens from history this month
+      const info = PLAN_INFO[plan] ?? PLAN_INFO.free;
+      const monthlyLimit = Number(info.tokens.replace(/,/g, ""));
+
+      // Count from local history
       let monthTokens = 0;
-      let totalTokens = 0;
       let monthOps = 0;
+      let allTimeOps = history.length;
 
       for (const h of history) {
-        const results = h.results as Record<string, unknown>;
-        const tokens = typeof results.totalTokens === "number" ? results.totalTokens : 0;
-        totalTokens += tokens;
         if (new Date(h.timestamp) >= monthStart) {
-          monthTokens += tokens;
           monthOps++;
+          const results = h.results as Record<string, unknown>;
+          if (typeof results.totalTokens === "number") monthTokens += results.totalTokens;
         }
       }
 
-      const limit = monthly_limit ?? 5000;
-      const remaining = Math.max(0, limit - monthTokens);
+      const remaining = Math.max(0, monthlyLimit - monthTokens);
+      const budgetWarn = Number(process.env.ZPL_BUDGET_WARN) || 500;
+      const isLow = remaining <= budgetWarn;
 
-      let text = `## Token Usage\n\n`;
+      let text = `## ZPL Account Dashboard\n\n`;
+
+      // Plan info
+      text += `### Your Plan: **${plan.toUpperCase()}** (${info.price})\n\n`;
+      text += `| Setting | Value |\n|---------|-------|\n`;
+      text += `| Plan | ${plan} (${info.price}) |\n`;
+      text += `| Max Dimension | d=${info.maxD} |\n`;
+      text += `| Rate Limit | ${info.rate} |\n`;
+      text += `| API Keys Allowed | ${info.keys} |\n`;
+      text += `| Monthly Tokens | ${info.tokens} |\n`;
+
+      // Usage
+      text += `\n### This Month\n\n`;
       text += `| Metric | Value |\n|--------|-------|\n`;
-      text += `| This month ops | ${monthOps} |\n`;
-      text += `| This month tokens (est.) | ~${monthTokens} |\n`;
-      text += `| Monthly limit | ${limit.toLocaleString()} |\n`;
-      text += `| Remaining (est.) | ~${remaining.toLocaleString()} |\n`;
-      text += `| All-time ops | ${history.length} |\n`;
+      text += `| Operations | ${monthOps} |\n`;
+      text += `| Tokens Used (est.) | ~${monthTokens.toLocaleString()} |\n`;
+      text += `| Tokens Remaining | ~${remaining.toLocaleString()} |\n`;
+      text += `| Days Until Reset | ${daysLeft} (resets ${monthEnd.toLocaleDateString()}) |\n`;
+      text += `| All-time Operations | ${allTimeOps} |\n`;
 
-      text += `\n### What you can do with ${remaining} tokens:\n\n`;
-      text += `| Operation | Token Cost | Count |\n|-----------|-----------|-------|\n`;
-      text += `| Compute (d=3) | 12 | ${Math.floor(remaining / 12)} |\n`;
-      text += `| Compute (d=9) | 90 | ${Math.floor(remaining / 90)} |\n`;
-      text += `| Compute (d=16) | 272 | ${Math.floor(remaining / 272)} |\n`;
-      text += `| Sweep (d=9) | 1,710 | ${Math.floor(remaining / 1710)} |\n`;
+      // Warning
+      if (isLow) {
+        text += `\n**WARNING: Low token budget!** Only ~${remaining.toLocaleString()} tokens remaining.\n`;
+        text += `Upgrade at https://zeropointlogic.io/pricing\n`;
+      }
 
-      text += `\n*Note: Token tracking is estimated from local history. Check engine dashboard for exact usage.*`;
+      // What you can do
+      text += `\n### Remaining Budget Breakdown\n\n`;
+      text += `| Operation | Cost | Available |\n|-----------|------|-----------|\n`;
+
+      const ops = [
+        { name: "Quick compute (d=3)", cost: 12 },
+        { name: "Standard compute (d=9)", cost: 90 },
+      ];
+      if (info.maxD >= 16) ops.push({ name: "Complex compute (d=16)", cost: 272 });
+      if (info.maxD >= 25) ops.push({ name: "Deep compute (d=25)", cost: 650 });
+      if (info.maxD >= 48) ops.push({ name: "Full compute (d=48)", cost: 2352 });
+      ops.push({ name: "Sweep (d=9, 19 steps)", cost: 1710 });
+
+      for (const op of ops) {
+        const count = Math.floor(remaining / op.cost);
+        text += `| ${op.name} | ${op.cost} tokens | ${count}x |\n`;
+      }
+
+      // Plan comparison hint
+      if (plan === "free") {
+        text += `\n### Upgrade?\n`;
+        text += `| Plan | Price | Tokens | Max D |\n|------|-------|--------|-------|\n`;
+        text += `| Basic | $10/mo | 10,000 | d=16 |\n`;
+        text += `| Pro | $29/mo | 50,000 | d=25 |\n`;
+        text += `| GamePro | $69/mo | 150,000 | d=32 |\n`;
+        text += `\nUpgrade: https://zeropointlogic.io/pricing\n`;
+      }
+
+      text += `\n---\n*Created by Alex Cicic — Zero Point Logic | engine.zeropointlogic.io*\n`;
+      text += `*Token tracking estimated from local history. Exact usage at zeropointlogic.io/dashboard*`;
+
+      return { content: [{ type: "text" as const, text }] };
+    }
+  );
+
+  // --- zpl_account: API key status and validation ---
+  server.tool(
+    "zpl_account",
+    "Check your API key status and engine connection. Verifies the key is valid, shows key type (user/service), and confirms engine is reachable. Use this to troubleshoot connection issues or verify your setup is correct.",
+    {},
+    async () => {
+      const apiKey = process.env.ZPL_API_KEY ?? "";
+      const engineUrl = process.env.ZPL_ENGINE_URL ?? "https://engine.zeropointlogic.io";
+
+      let text = `## ZPL Account Status\n\n`;
+
+      // Key check
+      if (!apiKey) {
+        text += `**API Key:** NOT SET\n\n`;
+        text += `You need an API key to use ZPL Engine tools.\n`;
+        text += `1. Create account: https://zeropointlogic.io/auth/register\n`;
+        text += `2. Get API key: https://zeropointlogic.io/dashboard/api-keys\n`;
+        text += `3. Add to MCP config: \`"ZPL_API_KEY": "zpl_u_your_key_here"\`\n`;
+        text += `4. Restart Claude\n`;
+        return { content: [{ type: "text" as const, text }] };
+      }
+
+      const keyType = apiKey.startsWith("zpl_s_") ? "Service" : apiKey.startsWith("zpl_u_") ? "User" : "Unknown";
+      const keyPrefix = apiKey.slice(0, 12) + "...";
+
+      text += `| Setting | Value |\n|---------|-------|\n`;
+      text += `| API Key | \`${keyPrefix}\` |\n`;
+      text += `| Key Type | ${keyType} |\n`;
+      text += `| Engine URL | ${engineUrl} |\n`;
+
+      // Health check
+      try {
+        const client = new (await import("../engine-client.js")).ZPLEngineClient("", engineUrl);
+        const health = await client.health();
+        text += `| Engine Status | **${health.status}** |\n`;
+        text += `| Engine Version | ${health.version} |\n`;
+      } catch {
+        text += `| Engine Status | **OFFLINE** |\n`;
+        text += `\n**Engine unreachable at ${engineUrl}**. Check your internet or ZPL_ENGINE_URL.\n`;
+      }
+
+      // Test key validity with minimal compute
+      try {
+        const client = new (await import("../engine-client.js")).ZPLEngineClient(apiKey, engineUrl);
+        const result = await client.compute({ d: 3, bias: 0.5, samples: 100 });
+        text += `| Key Valid | **YES** |\n`;
+        text += `| Test AIN | ${Math.round(result.ain * 100)}/100 |\n`;
+        text += `\n**Everything works!** Your API key is valid and the engine is responding.\n`;
+      } catch (err) {
+        const msg = (err as Error).message;
+        text += `| Key Valid | **NO** |\n`;
+        text += `| Error | ${msg} |\n`;
+
+        if (msg.includes("403")) {
+          text += `\n**API key rejected.** Possible causes:\n`;
+          text += `- Key was revoked or expired\n`;
+          text += `- Key doesn't exist in engine database\n`;
+          text += `- Token limit exceeded for this month\n`;
+          text += `\nGenerate a new key: https://zeropointlogic.io/dashboard/api-keys\n`;
+        } else if (msg.includes("401")) {
+          text += `\n**Invalid key format.** Make sure your key starts with \`zpl_u_\` or \`zpl_s_\`.\n`;
+        }
+      }
+
+      text += `\n---\n*ZPL Engine MCP v2.1.0 — by Alex Cicic, Zero Point Logic*`;
 
       return { content: [{ type: "text" as const, text }] };
     }

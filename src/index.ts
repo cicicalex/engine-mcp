@@ -287,7 +287,7 @@ server.tool(
 - "React or Vue?" → performance, ecosystem, jobs scored → AIN per option
 - "Buy or rent?" → cost, flexibility, equity scored → AIN per option
 
-The AI breaks the question into options + factors, scores each 0-10, and the ZPL Engine computes mathematical neutrality for each choice. Not opinions — math. Scores range ~4.0 to ~90.0.
+The AI breaks the question into options + factors, scores each 0-10, and the ZPL Engine computes mathematical neutrality for each choice. Not opinions — math. AIN scores range from 0.1 (extreme bias) to 99.9 (perfect neutrality).
 
 INSTRUCTIONS FOR AI: When user asks ANY comparison question, break it into:
 1. options: the choices (2-10)

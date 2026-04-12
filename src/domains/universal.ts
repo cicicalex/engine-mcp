@@ -8,7 +8,7 @@
  * → Engine computes AIN for each → balanced mathematical answer
  *
  * This is what makes ZPL unique: not opinions, but math.
- * Score range: ~4.0 to ~90.0 (realistic, not always 0 or 100).
+ * Score range: 0.1 to 99.9 — full engine precision.
  */
 
 import type { ComputeResponse } from "../engine-client.js";

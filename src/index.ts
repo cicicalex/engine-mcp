@@ -24,6 +24,7 @@ import {
   getHistory, addHistory, clearHistory,
   getWatchlist, addToWatchlist, removeFromWatchlist, updateWatchlistItem,
 } from "./store.js";
+import { registerAllTools } from "./tools/index.js";
 
 // ---------------------------------------------------------------------------
 // Configuration from environment
@@ -48,8 +49,11 @@ function getClient(): ZPLEngineClient {
 
 const server = new McpServer({
   name: "zpl-engine",
-  version: "1.0.0",
+  version: "2.0.0",
 });
+
+// Register all domain-specific tools (31 tools across 7 categories)
+registerAllTools(server, getClient);
 
 // ---------------------------------------------------------------------------
 // Tool: zpl_compute — Raw engine computation

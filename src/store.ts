@@ -56,13 +56,21 @@ export function getHistory(limit = 50): HistoryEntry[] {
 
 export function addHistory(entry: Omit<HistoryEntry, "id" | "timestamp">): HistoryEntry {
   const all = readJson<HistoryEntry[]>(HISTORY_FILE, []);
+
+  // Sanitize: strip any content that looks like API keys or tokens
+  const sanitized = JSON.parse(
+    JSON.stringify(entry).replace(/zpl_[us]_[a-f0-9]{20,}/gi, "[REDACTED]")
+      .replace(/Bearer [^\s"]+/gi, "Bearer [REDACTED]")
+      .replace(/gsk_[A-Za-z0-9]+/gi, "[REDACTED]")
+      .replace(/sk-[A-Za-z0-9]+/gi, "[REDACTED]")
+  );
+
   const full: HistoryEntry = {
-    ...entry,
+    ...sanitized,
     id: `zpl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     timestamp: new Date().toISOString(),
   };
   all.push(full);
-  // Keep only last MAX_HISTORY entries
   const trimmed = all.length > MAX_HISTORY ? all.slice(-MAX_HISTORY) : all;
   writeJson(HISTORY_FILE, trimmed);
   return full;

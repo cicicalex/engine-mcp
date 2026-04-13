@@ -38,6 +38,18 @@ const OUTPUT_STYLE = (process.env.ZPL_OUTPUT ?? "detailed") as "detailed" | "com
 const LANGUAGE = process.env.ZPL_LANGUAGE ?? "en";
 const BUDGET_WARN = Number(process.env.ZPL_BUDGET_WARN) || 500;
 const SAVE_HISTORY = process.env.ZPL_SAVE_HISTORY !== "false";
+const RATE_LIMIT_PER_MIN = Number(process.env.ZPL_RATE_LIMIT) || 60;
+
+// Simple rate limiter — prevents accidental token drain
+const callLog: number[] = [];
+function checkRateLimit(): boolean {
+  const now = Date.now();
+  // Remove entries older than 1 minute
+  while (callLog.length > 0 && callLog[0] < now - 60_000) callLog.shift();
+  if (callLog.length >= RATE_LIMIT_PER_MIN) return false;
+  callLog.push(now);
+  return true;
+}
 
 function getClient(): ZPLEngineClient {
   if (!API_KEY) {
@@ -75,6 +87,9 @@ server.tool(
     samples: z.number().int().min(100).max(50000).optional().default(1000).describe("Number of samples (100-50000). More samples = more precise, more tokens."),
   },
   async ({ d, bias, samples }) => {
+    if (!checkRateLimit()) {
+      return { content: [{ type: "text" as const, text: `⚠️ Rate limit exceeded (${RATE_LIMIT_PER_MIN}/min). Wait a moment and try again.` }], isError: true };
+    }
     try {
       const client = getClient();
       const result = await client.compute({ d, bias, samples });

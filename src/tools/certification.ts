@@ -9,17 +9,44 @@ import { distributionBias, clampD, ainSignal } from "./helpers.js";
 import { ZPLEngineClient } from "../engine-client.js";
 import { addHistory } from "../store.js";
 
-/** Analyze text and extract bias metrics */
+/** Analyze text with 5-factor weighted bias (gradient, not binary) */
 function analyzeText(text: string) {
-  const positive = (text.match(/\b(good|great|best|excellent|better|love|amazing|perfect|wonderful|superior|prefer|favorite|strong|win|success|benefit|advantage|recommended|definitely|absolutely|always)\b/gi) || []).length;
-  const negative = (text.match(/\b(bad|worst|terrible|poor|worse|hate|awful|horrible|never|inferior|weak|fail|loss|problem|disadvantage|avoid|dangerous|risky|wrong|impossible)\b/gi) || []).length;
-  const neutral = (text.match(/\b(both|however|although|depends|consider|perspective|subjective|opinion|alternatively|balanced|equally|fair|might|could|perhaps|sometimes|usually)\b/gi) || []).length;
+  const words = text.split(/\s+/).length;
   const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  const total = positive + negative;
-  const sentimentBias = total > 0 ? Math.abs(positive - negative) / total : 0;
-  const balanceFactor = Math.min(1, neutral / Math.max(total, 1));
-  const combinedBias = Math.max(0, Math.min(1, sentimentBias * 0.7 - balanceFactor * 0.2 + 0.1));
-  return { positive, negative, neutral, sentences: sentences.length, sentimentBias, combinedBias };
+
+  // Factor 1: Sentiment word balance
+  const positive = (text.match(/\b(good|great|best|excellent|better|love|amazing|perfect|wonderful|superior|fantastic|incredible|brilliant|outstanding|remarkable|exceptional|superb|impressive|delicious|beautiful|strong|success|benefit|advantage|recommended|definitely|absolutely|always|favorite|genius|revolutionary|flawless)\b/gi) || []).length;
+  const negative = (text.match(/\b(bad|worst|terrible|poor|worse|hate|awful|horrible|never|inferior|disgusting|ugly|weak|failure|problem|disadvantage|avoid|dangerous|risky|wrong|impossible|dreadful|pathetic|useless|mediocre|disappointing)\b/gi) || []).length;
+  const neutral = (text.match(/\b(both|however|although|depends|consider|perspective|subjective|alternatively|balanced|equally|fair|might|could|perhaps|sometimes|whereas|nevertheless|nonetheless|on the other hand|in contrast)\b/gi) || []).length;
+
+  const totalSentiment = positive + negative;
+  const sentimentImbalance = totalSentiment > 0 ? Math.abs(positive - negative) / totalSentiment : 0;
+
+  // Factor 2: Superlative/absolute density
+  const superlatives = (text.match(/\b(best|worst|most|least|greatest|highest|lowest|biggest|smallest|fastest|always|never|absolutely|completely|totally|utterly|definitely|certainly|obviously|clearly|everyone|nobody|everything|nothing)\b/gi) || []).length;
+  const superlativeDensity = Math.min(1, superlatives / Math.max(words / 12, 1));
+
+  // Factor 3: Hedging language (reduces bias)
+  const hedgingRatio = Math.min(1, neutral / Math.max(words / 20, 1));
+
+  // Factor 4: Contrast presence (both sides?)
+  const hasContrast = /\b(but|however|although|on the other hand|in contrast|while|whereas|nevertheless|yet|still)\b/i.test(text);
+
+  // Factor 5: Exclamation density (hype indicator)
+  const exclamations = (text.match(/!/g) || []).length;
+  const exclamationDensity = Math.min(1, exclamations / Math.max(sentences.length, 1));
+
+  // Combined bias: 0 = no bias, 1 = max bias
+  const combinedBias = Math.max(0.02, Math.min(0.98,
+    sentimentImbalance * 0.35 +
+    superlativeDensity * 0.25 +
+    exclamationDensity * 0.10 +
+    (1 - hedgingRatio) * 0.10 +
+    (hasContrast ? 0 : 0.10) +
+    0.10
+  ));
+
+  return { positive, negative, neutral, sentences: sentences.length, words, sentimentBias: sentimentImbalance, combinedBias };
 }
 
 export function registerCertificationTools(server: Server, getClient: () => ZPLEngineClient) {

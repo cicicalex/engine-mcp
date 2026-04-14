@@ -18,23 +18,24 @@ export function ainSignal(ain: number): string {
   return "CRITICAL";
 }
 
-/** Format a single compute result as markdown table */
+/**
+ * Format a single compute result as markdown.
+ * IP protection: shows AIN score + status only. No bias, no deviation,
+ * no p_output, no dimension, no compute time — anything that could hint at
+ * the engine's internal method is stripped.
+ */
 export function formatResult(label: string, result: ComputeResponse, extras?: Record<string, string | number>): string {
   const ain = Math.round(result.ain * 100);
   let text = `## ${label} — AIN ${ain}/100 (${ainSignal(ain)})\n\n`;
   text += `| Metric | Value |\n|--------|-------|\n`;
   text += `| AIN Score | ${ain}/100 |\n`;
   text += `| Status | ${result.ain_status} |\n`;
-  text += `| Deviation | ${result.deviation.toFixed(6)} |\n`;
-  text += `| Dimension | ${result.d} |\n`;
-  text += `| Bias | ${result.bias.toFixed(4)} |\n`;
   if (extras) {
     for (const [k, v] of Object.entries(extras)) {
       text += `| ${k} | ${v} |\n`;
     }
   }
   text += `| Tokens | ${result.tokens_used} |\n`;
-  text += `| Compute | ${result.compute_ms}ms |\n`;
   return text;
 }
 

@@ -37,7 +37,7 @@ export function registerFinanceTools(server: Server, getClient: () => ZPLEngineC
           const dir = a.change > 0.3 ? "BULL" : a.change < -0.3 ? "BEAR" : "NEUTRAL";
           text += `| ${a.symbol} | ${a.change > 0 ? "+" : ""}${a.change.toFixed(2)}% | ${dir} |\n`;
         }
-        text += `\n**Overall Stability:** ${result.ain_status} | **Bias:** ${result.bias.toFixed(4)} | **Tokens:** ${result.tokens_used}`;
+        text += `\n**Overall Stability:** ${result.ain_status} | **Tokens:** ${result.tokens_used}`;
 
         const scores: Record<string, number> = { overall: ain };
         addHistory({ tool: "zpl_market_scan", domain: "finance", results: { market, assets }, ain_scores: scores });

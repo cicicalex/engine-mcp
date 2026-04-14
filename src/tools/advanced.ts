@@ -206,9 +206,6 @@ Use this to certify game balance, AI fairness, token distribution, or any system
         text += `║   │  AIN Score:  ${String(ain).padStart(3)}/100             │                 ║\n`;
         text += `║   │  Grade:      ${grade.padEnd(20)} │                 ║\n`;
         text += `║   │  Status:     ${result.ain_status.padEnd(20)}│                 ║\n`;
-        text += `║   │  Deviation:  ${result.deviation.toFixed(6).padEnd(20)}│                 ║\n`;
-        text += `║   │  Dimension:  ${String(d).padEnd(20)} │                 ║\n`;
-        text += `║   │  Samples:    5,000              │                 ║\n`;
         text += `║   └────────────────────────────────┘                 ║\n`;
         text += `║                                                      ║\n`;
         text += `║   Verdict: ${verdict.slice(0, 42).padEnd(42)} ║\n`;

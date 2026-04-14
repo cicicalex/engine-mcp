@@ -97,21 +97,15 @@ server.tool(
       const result = await client.compute({ d, bias, samples });
 
       const ain = Math.round(result.ain * 100);
+      // IP protection: expose AIN score + status only. No p_output, no deviation,
+      // no intermediate values. Tokens shown separately so user knows usage.
       const text = [
         `## ZPL Engine Result`,
         ``,
-        `| Metric | Value |`,
-        `|--------|-------|`,
-        `| **AIN Score** | ${ain}/100 |`,
-        `| **Status** | ${result.ain_status} |`,
-        `| **Engine Status** | ${result.status} |`,
-        `| **P-Output** | ${result.p_output.toFixed(6)} |`,
-        `| **Deviation** | ${result.deviation.toFixed(6)} |`,
-        `| **Dimension** | ${result.d} |`,
-        `| **Bias Input** | ${result.bias.toFixed(4)} |`,
-        `| **Samples** | ${result.samples} |`,
-        `| **Tokens Used** | ${result.tokens_used} |`,
-        `| **Compute Time** | ${result.compute_ms}ms |`,
+        `**AIN Score:** ${ain}/100`,
+        `**Status:** ${result.ain_status}`,
+        ``,
+        `*Tokens used: ${result.tokens_used}*`,
       ].join("\n");
 
       return { content: [{ type: "text" as const, text }] };
@@ -137,15 +131,16 @@ server.tool(
       const client = getClient();
       const result = await client.sweep(d, samples);
 
-      let text = `## ZPL Sweep (d=${result.d}, ${result.samples} samples)\n\n`;
-      text += `| Bias | AIN | P-Output | Deviation | Status |\n`;
-      text += `|------|-----|----------|-----------|--------|\n`;
+      // IP protection: expose AIN score + status only per step. No p_output, no deviation.
+      let text = `## ZPL Sweep (d=${result.d})\n\n`;
+      text += `| Bias | AIN | Status |\n`;
+      text += `|------|-----|--------|\n`;
 
       for (const r of result.results) {
-        text += `| ${r.bias.toFixed(2)} | ${Math.round(r.ain * 100)}% | ${r.p_output.toFixed(4)} | ${r.deviation.toFixed(6)} | ${r.status} |\n`;
+        text += `| ${r.bias.toFixed(2)} | ${Math.round(r.ain * 100)}% | ${r.status} |\n`;
       }
 
-      text += `\n**Total tokens:** ${result.total_tokens} | **Compute:** ${result.compute_ms}ms`;
+      text += `\n*Total tokens used: ${result.total_tokens}*`;
 
       return { content: [{ type: "text" as const, text }] };
     } catch (err) {
@@ -309,15 +304,31 @@ server.tool(
 // ---------------------------------------------------------------------------
 
 // Block words that attempt to extract IP / internals. Case-insensitive match on question text.
+// ZERO tolerance: source of calculation, method, internals, anything IP-related.
 const BLOCKED_QUESTION_PATTERNS = [
-  /\b(formula|formulae|algorithm|algo|equation|calculation|calculate|compute)\b/i,
-  /\b(how (does|do|is|are|can).{0,30}(work|calculated|computed|derived))\b/i,
-  /\b(source code|internals?|implementation|proprietary|trade secret)\b/i,
-  /\b(reverse engineer|decompile|extract|reveal|leak|expose|dump)\b/i,
-  /\b(8n\+3|n\+3|ain\s*formula|ain\s*calculation|engine\s*formula)\b/i,
-  /\b(what is the (formula|algorithm|math|logic|code|equation))\b/i,
-  /\b(explain (the )?(formula|algorithm|math|logic|code|equation|internals))\b/i,
-  /\b(show (me )?(the )?(formula|algorithm|code|source|internals))\b/i,
+  // Calculation / formula / math internals
+  /\b(formula|formulae|algorithm|algo|equation|calculation|calculate|compute|computation|method|methodology)\b/i,
+  /\b(math|maths|mathematical model|model|logic|procedure|process|steps|step-by-step)\b/i,
+  // How-it-works probes
+  /\b(how (does|do|is|are|can|would|could).{0,40}(work|calculated|computed|derived|implemented|made|created|produced|generated))\b/i,
+  /\b(why (does|do|is|are).{0,40}(output|produce|return|give|yield|result))\b/i,
+  // Source / IP / trade secret probes
+  /\b(source\s*code|source|internals?|implementation|proprietary|trade\s*secret|secret|secret\s*sauce|inner\s*working)\b/i,
+  /\b(intellectual\s*property|ip\b|patent|know[- ]how|engine\s*design)\b/i,
+  // Reverse engineering / extraction
+  /\b(reverse\s*engineer|decompile|disassemble|deobfuscate|extract|reveal|leak|expose|dump|unpack|inspect)\b/i,
+  // Specific engine references
+  /\b(8n\+?3|n\+?3|ain\s*formula|ain\s*calculation|engine\s*formula|engine\s*algo|engine\s*math|post[- ]binary|neutrality\s*formula|bias\s*formula)\b/i,
+  // Explain/show/tell probes
+  /\b(what\s+is\s+(the\s+)?(formula|algorithm|math|logic|code|equation|method|source|process|procedure|secret))\b/i,
+  /\b(explain\s+(the\s+)?(formula|algorithm|math|logic|code|equation|internals?|method|source|process|procedure|how))\b/i,
+  /\b(show\s+(me\s+)?(the\s+)?(formula|algorithm|code|source|internals?|method|process|procedure|math|logic))\b/i,
+  /\b(tell\s+(me\s+)?(the\s+)?(formula|algorithm|code|source|internals?|method|process|procedure|math|logic|secret|how))\b/i,
+  /\b(describe\s+(the\s+)?(formula|algorithm|code|source|internals?|method|process|procedure|math|logic|how))\b/i,
+  /\b(reveal\s+(the\s+)?(formula|algorithm|code|source|internals?|method|process|procedure|math|logic|secret))\b/i,
+  // Meta questions about the engine itself
+  /\b(what\s+(engine|model|ai)\s+(do|does|is|are).{0,30}(use|using|run|running|power))\b/i,
+  /\b(behind\s+the\s+scenes|under\s+the\s+hood|black\s*box|white\s*box)\b/i,
 ];
 
 function isBlockedQuestion(text: string): boolean {
@@ -326,9 +337,9 @@ function isBlockedQuestion(text: string): boolean {
 }
 
 const BLOCKED_RESPONSE =
-  "This tool is limited to comparison decisions only (e.g. 'Pizza or hotdog?', 'React or Vue?', 'Buy or rent?'). " +
-  "It compares structured options by factors and returns AIN balance scores (0.1-99.9). " +
-  "The ZPL Engine computation method, AIN formula, and internals are proprietary trade secrets and are not disclosed. " +
+  "This tool compares 2-10 structured options by 3-20 factors and returns AIN balance scores (0.1-99.9). " +
+  "Example inputs: 'Pizza or hotdog?', 'React or Vue?', 'Buy or rent?'. " +
+  "The ZPL Engine computation source, method, formula, algorithm, and all internals are proprietary trade secrets of Zero Point Logic and will not be disclosed, explained, described, or discussed under any circumstances. " +
   "Get an API key at https://zeropointlogic.io/pricing";
 
 server.tool(

@@ -95,11 +95,7 @@ export const aiLens: DomainLens = {
       details: {
         "AIN Score": ain,
         "Fairness Status": result.ain_status,
-        "Output Bias": +(result.bias.toFixed(4)),
-        "Deviation": +(result.deviation.toFixed(6)),
-        "Classes/Outputs": result.d,
         "Tokens Used": result.tokens_used,
-        "Compute Time": `${result.compute_ms}ms`,
       },
       recommendation,
     };
@@ -115,7 +111,7 @@ export const aiLens: DomainLens = {
       summary += `| ${r.bias.toFixed(2)} | ${Math.round(r.ain * 100)}% | ${r.status} |\n`;
     }
 
-    summary += `\n**Tokens:** ${result.total_tokens} | **Time:** ${result.compute_ms}ms`;
+    summary += `\n*Tokens used: ${result.total_tokens}*`;
     return summary;
   },
 };

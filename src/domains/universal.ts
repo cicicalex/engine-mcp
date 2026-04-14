@@ -105,7 +105,6 @@ export const universalLens: DomainLens = {
       details: {
         "AIN Score": ain,
         "Balance": result.ain_status,
-        "Deviation": +(result.deviation.toFixed(6)),
       },
       recommendation: `This ${context} scores ${ain}/100 on mathematical balance.`,
     };
@@ -163,15 +162,16 @@ export function interpretOption(
   const factorScores: Record<string, number> = {};
   factors.forEach((f, i) => { factorScores[f] = scores[i] ?? 0; });
 
+  // Only expose AIN + status + signal. Bias/deviation/timing never shown to protect IP.
   return {
     name,
     ain,
     status: result.ain_status,
     signal,
-    bias: +(result.bias.toFixed(4)),
-    deviation: +(result.deviation.toFixed(6)),
-    tokens_used: result.tokens_used,
-    compute_ms: result.compute_ms,
+    bias: 0,
+    deviation: 0,
+    tokens_used: 0,
+    compute_ms: 0,
     factor_scores: factorScores,
   };
 }
@@ -186,52 +186,25 @@ export function formatAskResult(
   const sorted = [...options].sort((a, b) => b.ain - a.ain);
   const winner = sorted[0];
 
-  // Build factor breakdown table
-  let breakdown = `| Factor |`;
-  for (const opt of options) breakdown += ` ${opt.name} |`;
-  breakdown += `\n|--------|`;
-  for (let i = 0; i < options.length; i++) breakdown += `--------|`;
-  breakdown += `\n`;
-
-  for (const factor of factors) {
-    breakdown += `| ${factor} |`;
-    for (const opt of options) {
-      const score = opt.factor_scores[factor] ?? 0;
-      breakdown += ` ${score}/10 |`;
-    }
-    breakdown += `\n`;
-  }
-
-  // Build summary
+  // Build summary — AIN score only. No bias, no deviation, no timing, no hints about internals.
   const ctx = context ?? "decision";
-  let summary = `## ZPL Analysis: ${question}\n\n`;
+  let summary = `## ${question}\n\n`;
 
-  // Results per option
   for (const opt of sorted) {
-    const bar = "=".repeat(Math.round(opt.ain / 5));
-    summary += `### ${opt.name} — AIN ${opt.ain}/100 (${opt.signal})\n`;
-    summary += `\`[${bar}${"·".repeat(20 - Math.round(opt.ain / 5))}]\` ${opt.status}\n\n`;
+    summary += `- **${opt.name}** — AIN ${opt.ain}/100\n`;
   }
 
-  // Factor breakdown
-  summary += `### Factor Breakdown\n\n${breakdown}\n`;
-
-  // Winner
   if (sorted.length >= 2) {
     const diff = sorted[0].ain - sorted[1].ain;
+    summary += `\n`;
     if (diff <= 5) {
-      summary += `**Result:** Very close! **${sorted[0].name}** (${sorted[0].ain}) and **${sorted[1].name}** (${sorted[1].ain}) are nearly equally balanced. Your personal preference should decide.\n`;
+      summary += `Very close — **${sorted[0].name}** (${sorted[0].ain}) and **${sorted[1].name}** (${sorted[1].ain}) score nearly equal. Personal preference decides.`;
     } else if (diff <= 15) {
-      summary += `**Result:** **${sorted[0].name}** (AIN ${sorted[0].ain}) is the more balanced ${ctx}. ${sorted[1].name} (${sorted[1].ain}) is close but slightly less neutral.\n`;
+      summary += `**${sorted[0].name}** (${sorted[0].ain}) scores higher than **${sorted[1].name}** (${sorted[1].ain}).`;
     } else {
-      summary += `**Result:** **${sorted[0].name}** (AIN ${sorted[0].ain}) is clearly the more balanced ${ctx}. ${sorted[1].name} (${sorted[1].ain}) shows more bias in its factor distribution.\n`;
+      summary += `**${sorted[0].name}** (${sorted[0].ain}) scores clearly higher than **${sorted[1].name}** (${sorted[1].ain}).`;
     }
   }
-
-  // Token usage
-  const totalTokens = options.reduce((s, o) => s + o.tokens_used, 0);
-  const totalMs = options.reduce((s, o) => s + o.compute_ms, 0);
-  summary += `\n*Computed by ZPL Engine | ${totalTokens} tokens | ${totalMs}ms*`;
 
   return {
     question,
@@ -239,6 +212,6 @@ export function formatAskResult(
     winner: winner.name,
     winner_ain: winner.ain,
     summary,
-    factor_breakdown: breakdown,
+    factor_breakdown: "",
   };
 }

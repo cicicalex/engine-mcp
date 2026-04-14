@@ -97,13 +97,8 @@ export const financeLens: DomainLens = {
       signal,
       details: {
         "AIN Score": ain,
-        "Engine Status": result.status,
-        "Deviation": +(result.deviation.toFixed(6)),
-        "P-Output": +(result.p_output.toFixed(6)),
-        "Dimension": result.d,
-        "Bias Input": +(result.bias.toFixed(4)),
+        "Status": result.ain_status,
         "Tokens Used": result.tokens_used,
-        "Compute Time": `${result.compute_ms}ms`,
       },
       recommendation,
     };
@@ -114,18 +109,18 @@ export const financeLens: DomainLens = {
     const neutral = result.results.find((r) => r.ain >= 0.9);
     const unstable = result.results.filter((r) => r.ain < 0.3);
 
-    let summary = `## ${context} Stability Sweep (d=${result.d})\n\n`;
-    summary += `| Bias | AIN | Status | Deviation |\n|------|-----|--------|-----------|\n`;
+    let summary = `## ${context} Stability Sweep\n\n`;
+    summary += `| Bias | AIN | Status |\n|------|-----|--------|\n`;
 
     for (const r of result.results) {
       const ainPct = Math.round(r.ain * 100);
-      summary += `| ${r.bias.toFixed(2)} | ${ainPct}% | ${r.status} | ${r.deviation.toFixed(6)} |\n`;
+      summary += `| ${r.bias.toFixed(2)} | ${ainPct}% | ${r.status} |\n`;
     }
 
-    summary += `\n**Tokens used:** ${result.total_tokens} | **Compute:** ${result.compute_ms}ms\n`;
+    summary += `\n*Tokens used: ${result.total_tokens}*\n`;
 
     if (neutral) {
-      summary += `\nNeutral point found at bias=${neutral.bias.toFixed(2)} (AIN ${Math.round(neutral.ain * 100)}%).`;
+      summary += `\nNeutral point identified (AIN ${Math.round(neutral.ain * 100)}%).`;
     }
     if (unstable.length > 0) {
       summary += `\n${unstable.length} of 19 bias steps show instability (AIN < 30%).`;

@@ -77,15 +77,13 @@ export function registerCertificationTools(server: Server, getClient: () => ZPLE
         else badge = `🔴 EXTREME BIAS`;
 
         // Compact inline format for chat display
-        const inline = `${badge} — AIN ${ain.toFixed(2)}/100 [d=${d}]`;
+        const inline = `${badge} — AIN ${ain.toFixed(2)}/100`;
 
-        // Detailed breakdown
+        // Detailed breakdown — IP protection: AIN + status + input analysis only
         let output = `${inline}\n\n`;
         output += `| Metric | Value |\n|--------|-------|\n`;
         output += `| AIN Score | **${ain.toFixed(2)}/100** |\n`;
         output += `| Status | ${result.ain_status} |\n`;
-        output += `| Dimension | D${d} |\n`;
-        output += `| Deviation | ${result.deviation.toFixed(6)} |\n`;
         output += `| Positive words | ${analysis.positive} |\n`;
         output += `| Negative words | ${analysis.negative} |\n`;
         output += `| Balanced words | ${analysis.neutral} |\n`;

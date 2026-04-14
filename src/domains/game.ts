@@ -92,11 +92,7 @@ export const gameLens: DomainLens = {
       details: {
         "AIN Score": ain,
         "Balance Status": result.ain_status,
-        "Distribution Bias": +(result.bias.toFixed(4)),
-        "Deviation": +(result.deviation.toFixed(6)),
-        "Elements Analyzed": result.d,
         "Tokens Used": result.tokens_used,
-        "Compute Time": `${result.compute_ms}ms`,
       },
       recommendation,
     };
@@ -104,7 +100,7 @@ export const gameLens: DomainLens = {
 
   interpretSweep(result: SweepResponse, input: Record<string, unknown>): string {
     const gameType = (input.game_type as string) ?? "game";
-    let summary = `## ${gameType} Balance Sweep (d=${result.d})\n\n`;
+    let summary = `## ${gameType} Balance Sweep\n\n`;
     summary += `Tests how your ${gameType} economy behaves across 19 bias levels:\n\n`;
     summary += `| Bias | AIN | Status |\n|------|-----|--------|\n`;
 
@@ -114,7 +110,7 @@ export const gameLens: DomainLens = {
       summary += `| ${r.bias.toFixed(2)} | ${ainPct}% | ${emoji} |\n`;
     }
 
-    summary += `\n**Tokens:** ${result.total_tokens} | **Time:** ${result.compute_ms}ms`;
+    summary += `\n*Tokens used: ${result.total_tokens}*`;
     return summary;
   },
 };

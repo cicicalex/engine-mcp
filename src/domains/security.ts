@@ -93,11 +93,7 @@ export const securityLens: DomainLens = {
       details: {
         "AIN Score": ain,
         "Risk Status": result.ain_status,
-        "Risk Concentration": +(result.bias.toFixed(4)),
-        "Deviation": +(result.deviation.toFixed(6)),
-        "Components Analyzed": result.d,
         "Tokens Used": result.tokens_used,
-        "Compute Time": `${result.compute_ms}ms`,
       },
       recommendation,
     };
@@ -105,14 +101,14 @@ export const securityLens: DomainLens = {
 
   interpretSweep(result: SweepResponse, input: Record<string, unknown>): string {
     const type = (input.assessment_type as string) ?? "security";
-    let summary = `## ${type} Risk Sweep (d=${result.d})\n\n`;
+    let summary = `## ${type} Risk Sweep\n\n`;
     summary += `| Bias | AIN | Status |\n|------|-----|--------|\n`;
 
     for (const r of result.results) {
       summary += `| ${r.bias.toFixed(2)} | ${Math.round(r.ain * 100)}% | ${r.status} |\n`;
     }
 
-    summary += `\n**Tokens:** ${result.total_tokens} | **Time:** ${result.compute_ms}ms`;
+    summary += `\n*Tokens used: ${result.total_tokens}*`;
     return summary;
   },
 };

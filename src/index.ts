@@ -70,7 +70,7 @@ function getClient(): ZPLEngineClient {
 
 const server = new McpServer({
   name: "ZPL Engine MCP",
-  version: "3.3.1",
+  version: "3.4.0",
   description: "Mathematical stability engine. 67 tools (63 unique + 4 backwards-compat aliases). AIN is a STABILITY measurement only — never prediction or advice. v3.3 adds clearer balance-prefixed names, v3.3.1 adds 8 AI Eval tools for model consistency testing. Created by Ciciu Alexandru-Costinel.",
 });
 
@@ -558,7 +558,7 @@ async function checkLatestVersion(): Promise<void> {
     if (!res.ok) return;
     const { version: latest } = (await res.json()) as { version: string };
 
-    const current = "3.3.1"; // bumped — keep in sync with package.json
+    const current = "3.4.0"; // bumped — keep in sync with package.json
     if (latest && latest !== current) {
       console.error(`\nℹ️  zpl-engine-mcp v${latest} is available (you have v${current}).`);
       console.error(`   Update: npm i -g zpl-engine-mcp@latest\n`);

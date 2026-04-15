@@ -154,7 +154,7 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
     "zpl_validate_input",
     "Validate a distribution before sending it to the engine. Checks: array length, value sums, NaN, negative values, etc. Returns errors and warnings WITHOUT consuming tokens. Use this to catch input mistakes before paying for a compute call.",
     {
-      values: z.array(z.number()).min(1).describe("The distribution to validate"),
+      values: z.array(z.number()).min(1).max(10000).describe("The distribution to validate"),
       kind: z.enum(["weights", "counts", "scores", "rates", "raw"]).optional().describe("What kind of distribution this is (affects validation rules)"),
       expected_sum: z.number().optional().describe("If set, validates that values sum to this (e.g. 100 for percentages, 1.0 for probabilities)"),
     },
@@ -414,7 +414,7 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
       }
 
       const keyType = apiKey.startsWith("zpl_s_") ? "Service" : apiKey.startsWith("zpl_u_") ? "User" : "Unknown";
-      const keyPrefix = apiKey.slice(0, 12) + "...";
+      const keyPrefix = apiKey.slice(0, 8) + "...";
 
       text += `| Setting | Value |\n|---------|-------|\n`;
       text += `| API Key | \`${keyPrefix}\` |\n`;

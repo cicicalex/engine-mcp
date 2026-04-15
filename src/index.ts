@@ -164,6 +164,12 @@ server.tool(
   },
   async ({ domain, input, sweep }) => {
     try {
+      // Validate input size to prevent abuse
+      const inputStr = JSON.stringify(input);
+      if (inputStr.length > 50000) {
+        return { content: [{ type: "text" as const, text: "Error: Input too large (max 50KB)" }], isError: true };
+      }
+
       const lens = getDomain(domain);
       if (!lens) {
         return {
@@ -543,7 +549,7 @@ export function createSandboxServer() {
  */
 async function checkLatestVersion(): Promise<void> {
   try {
-    const cacheFile = `${process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"}/zpl-mcp-version-check.json`;
+    const cacheFile = `${process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"}/zpl-mcp-version-check-${process.pid}.json`;
     const fs = await import("node:fs/promises");
 
     // Skip if cached within 24h

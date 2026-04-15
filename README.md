@@ -24,7 +24,7 @@ Connects any MCP-compatible AI client (Claude Desktop, Claude Code, Cursor, Wind
   "mcpServers": {
     "zpl-engine": {
       "command": "npx",
-      "args": ["-y", "zpl-engine-mcp"],
+      "args": ["-y", "zpl-engine-mcp@latest"],
       "env": {
         "ZPL_API_KEY": "zpl_u_YOUR_KEY_HERE",
         "ZPL_MODE": "pure"
@@ -89,7 +89,7 @@ npm run build
   "mcpServers": {
     "zpl-engine": {
       "command": "npx",
-      "args": ["-y", "zpl-engine-mcp"],
+      "args": ["-y", "zpl-engine-mcp@latest"],
       "env": {
         "ZPL_API_KEY": "zpl_u_YOUR_KEY_HERE",
         "ZPL_MODE": "pure"

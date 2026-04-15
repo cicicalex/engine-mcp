@@ -3,11 +3,19 @@
  * Stores in ~/.zpl-engine/ directory.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, normalize } from "node:path";
 
-const STORE_DIR = process.env.ZPL_STORE_DIR ?? join(homedir(), ".zpl-engine");
+const home = homedir();
+const rawDir = process.env.ZPL_STORE_DIR ?? join(home, ".zpl-engine");
+const resolvedDir = normalize(resolve(rawDir));
+const STORE_DIR = resolvedDir.startsWith(home)
+  ? resolvedDir
+  : (() => {
+      console.error(`[store] ZPL_STORE_DIR "${rawDir}" is outside home directory. Using default.`);
+      return join(home, ".zpl-engine");
+    })();
 
 function ensureDir(): void {
   if (!existsSync(STORE_DIR)) {
@@ -28,7 +36,9 @@ function readJson<T>(filename: string, fallback: T): T {
 
 function writeJson(filename: string, data: unknown): void {
   ensureDir();
-  writeFileSync(join(STORE_DIR, filename), JSON.stringify(data, null, 2), "utf-8");
+  const filePath = join(STORE_DIR, filename);
+  writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+  try { chmodSync(filePath, 0o600); } catch { /* Windows may not support chmod */ }
 }
 
 // ---------------------------------------------------------------------------

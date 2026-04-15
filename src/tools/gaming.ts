@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import type { Server } from "./helpers.js";
-import { distributionBias, concentrationBias, clampD } from "./helpers.js";
+import { distributionBias, concentrationBias, clampD, ZPL_DISCLAIMER } from "./helpers.js";
 import { ZPLEngineClient } from "../engine-client.js";
 import { addHistory } from "../store.js";
 
@@ -261,6 +261,11 @@ export function registerGamingTools(server: Server, getClient: () => ZPLEngineCl
     async ({ outcomes, possible_values }) => {
       try {
         const client = getClient();
+
+        // Statistical reliability check — chi-square needs ~30 samples per cell
+        const minRecommended = possible_values * 30;
+        const insufficientSamples = outcomes.length < minRecommended;
+
         // Count frequency of each outcome
         const counts = new Array(possible_values).fill(0);
         for (const o of outcomes) {
@@ -274,19 +279,35 @@ export function registerGamingTools(server: Server, getClient: () => ZPLEngineCl
 
         const expected = outcomes.length / possible_values;
         let text = `## RNG Fairness Test — AIN ${ain}/100\n\n`;
-        text += `**Sample size:** ${outcomes.length} | **Possible values:** ${possible_values}\n\n`;
+
+        if (insufficientSamples) {
+          text += `> ⚠️  **Insufficient sample size for reliable test.** ` +
+            `You provided ${outcomes.length} outcomes for ${possible_values} possible values. ` +
+            `Statistical fairness tests need at least ~30 samples per value (target: ${minRecommended}+ outcomes). ` +
+            `Treat the verdict below as indicative only.\n\n`;
+        }
+
+        text += `**Sample size:** ${outcomes.length} | **Possible values:** ${possible_values}`;
+        if (insufficientSamples) text += ` | **Status:** UNDER-SAMPLED`;
+        text += `\n\n`;
         text += `| Value | Count | Expected | Deviation |\n|-------|-------|----------|-----------|\n`;
         for (let i = 0; i < possible_values; i++) {
           const dev = ((counts[i] - expected) / expected * 100).toFixed(1);
           text += `| ${i + 1} | ${counts[i]} | ${expected.toFixed(0)} | ${Number(dev) > 0 ? "+" : ""}${dev}% |\n`;
         }
 
-        if (ain >= 70) text += `\n**Verdict:** RNG appears fair. Distribution matches expected uniform.\n`;
-        else if (ain >= 40) text += `\n**Verdict:** Slight bias detected. Some values appear more than expected. May need more samples to confirm.\n`;
-        else text += `\n**Verdict:** Significant bias. RNG is NOT producing fair results. Check implementation.\n`;
+        if (insufficientSamples) {
+          text += `\n**Verdict:** Inconclusive due to under-sampling. Collect at least ${minRecommended} outcomes before drawing conclusions.\n`;
+        } else if (ain >= 70) {
+          text += `\n**Verdict:** RNG appears fair. Distribution matches expected uniform.\n`;
+        } else if (ain >= 40) {
+          text += `\n**Verdict:** Slight bias detected. Some values appear more than expected. Collect more samples to confirm.\n`;
+        } else {
+          text += `\n**Verdict:** Significant bias. RNG is NOT producing fair results. Check implementation.\n`;
+        }
 
-        text += `**Tokens:** ${result.tokens_used}`;
-        addHistory({ tool: "zpl_rng_test", domain: "game", results: { possible_values, sample_size: outcomes.length }, ain_scores: { rng: ain } });
+        text += `**Tokens:** ${result.tokens_used}\n\n${ZPL_DISCLAIMER}`;
+        addHistory({ tool: "zpl_rng_test", domain: "game", results: { possible_values, sample_size: outcomes.length, insufficientSamples }, ain_scores: { rng: ain } });
         return { content: [{ type: "text" as const, text }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };

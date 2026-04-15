@@ -100,10 +100,10 @@ export function registerCertificationTools(server: Server, getClient: () => ZPLE
     }
   );
 
-  // --- zpl_news_bias: score any article/news for editorial bias ---
+  // --- zpl_news_bias: language-balance score for any article ---
   server.tool(
     "zpl_news_bias",
-    "Score a news article or blog post for editorial bias. Paste the text and get an AIN neutrality score. Detects if the article favors one perspective over another.",
+    "Compute a language-balance score (AIN) for an article: the ratio of positive/negative/neutral wording, sentence-structure variance, and hedging density. Does NOT determine whether the article is true, factually correct, or editorially biased — only the linguistic balance of its wording. Use to flag articles for human review, not to certify them.",
     {
       title: z.string().max(300).describe("Article title"),
       text: z.string().min(50).max(20000).describe("Article text to analyze"),
@@ -117,27 +117,26 @@ export function registerCertificationTools(server: Server, getClient: () => ZPLE
         const result = await client.compute({ d, bias: analysis.combinedBias, samples: 1000 });
         const ain = Math.round(result.ain * 100);
 
-        let output = `## Article Bias Analysis: "${title}"\n\n`;
+        let output = `## Language Balance Score: "${title}"\n\n`;
         output += `| Metric | Value |\n|--------|-------|\n`;
-        output += `| AIN Score | **${ain}/100** |\n`;
+        output += `| Language Balance (AIN) | **${ain}/100** |\n`;
         output += `| Signal | ${ainSignal(ain)} |\n`;
-        output += `| Positive language | ${analysis.positive} instances |\n`;
-        output += `| Negative language | ${analysis.negative} instances |\n`;
-        output += `| Balancing language | ${analysis.neutral} instances |\n`;
-        output += `| Sentences | ${analysis.sentences} |\n`;
-        output += `| Sentiment bias | ${(analysis.sentimentBias * 100).toFixed(1)}% |\n`;
-        if (claimed_stance) output += `| Claimed stance | ${claimed_stance} |\n`;
+        output += `| Positive-coded words | ${analysis.positive} |\n`;
+        output += `| Negative-coded words | ${analysis.negative} |\n`;
+        output += `| Hedging / contrast words | ${analysis.neutral} |\n`;
+        output += `| Sentences analyzed | ${analysis.sentences} |\n`;
+        if (claimed_stance) output += `| Claimed stance (informational only) | ${claimed_stance} |\n`;
         output += `| Tokens | ${result.tokens_used} |\n`;
 
-        output += `\n### Verdict\n`;
-        if (ain >= 80) output += `This article is **journalistically balanced**. Multiple perspectives are fairly represented.\n`;
-        else if (ain >= 60) output += `This article has a **slight editorial lean** but remains mostly fair.\n`;
-        else if (ain >= 40) output += `This article shows **clear editorial bias**. One perspective dominates.\n`;
-        else output += `This article is **heavily biased**. It reads as advocacy, not reporting.\n`;
+        output += `\n### Reading\n`;
+        if (ain >= 80) output += `Linguistic balance is high — wording uses comparable amounts of positive, negative, and hedging language.\n`;
+        else if (ain >= 60) output += `Slight linguistic skew toward one tone, but within typical editorial range.\n`;
+        else if (ain >= 40) output += `Notable linguistic skew. The wording leans clearly in one direction.\n`;
+        else output += `Heavy linguistic skew. The wording is one-sided in tone.\n`;
 
-        if (claimed_stance === "neutral" && ain < 60) {
-          output += `\n⚠️ **Mismatch:** Article claims to be neutral but AIN score indicates significant bias.\n`;
-        }
+        output += `\n> **Important:** This score reflects the **wording**, not the **truth** or **editorial intent** of the article. ` +
+          `An article can be linguistically balanced and factually wrong, or linguistically skewed and factually correct. ` +
+          `Use this score to prioritize human review, not to certify content as "biased" or "neutral".\n`;
 
         addHistory({ tool: "zpl_news_bias", results: { title, sentences: analysis.sentences }, ain_scores: { article: ain } });
 
@@ -154,10 +153,10 @@ export function registerCertificationTools(server: Server, getClient: () => ZPLE
     }
   );
 
-  // --- zpl_review_bias: check product/service review for authenticity ---
+  // --- zpl_review_bias: language-balance score for a review ---
   server.tool(
     "zpl_review_bias",
-    "Analyze a product or service review for bias. Detects if a review is genuinely balanced or suspiciously one-sided (potential fake review).",
+    "Compute a language-balance score (AIN) for a single review: the wording's positive/negative/hedging mix relative to the star rating. A low score means the wording is one-sided. Does NOT determine if the review is fake, paid, or untruthful — only that the wording is unbalanced. Use to flag reviews for moderation, not to certify them as inauthentic.",
     {
       product: z.string().max(200).describe("Product/service being reviewed"),
       review_text: z.string().min(20).max(5000).describe("The review text"),
@@ -176,15 +175,22 @@ export function registerCertificationTools(server: Server, getClient: () => ZPLE
         const result = await client.compute({ d, bias: combinedBias, samples: 1000 });
         const ain = Math.round(result.ain * 100);
 
-        let output = `## Review Analysis: ${product}\n\n`;
-        if (rating) output += `**Rating:** ${"★".repeat(rating)}${"☆".repeat(5 - rating)} (${rating}/5)\n\n`;
-        output += `| AIN Score | **${ain}/100** | ${ainSignal(ain)} |\n|---|---|---|\n`;
-        output += `| Positive words | ${analysis.positive} | Negative words | ${analysis.negative} |\n`;
+        let output = `## Review Wording Balance: ${product}\n\n`;
+        if (rating) output += `**Rating provided:** ${"★".repeat(rating)}${"☆".repeat(5 - rating)} (${rating}/5)\n\n`;
+        output += `| Metric | Value |\n|---|---|\n`;
+        output += `| Language Balance (AIN) | **${ain}/100** (${ainSignal(ain)}) |\n`;
+        output += `| Positive-coded words | ${analysis.positive} |\n`;
+        output += `| Negative-coded words | ${analysis.negative} |\n`;
+        output += `| Hedging words | ${analysis.neutral} |\n`;
 
-        output += `\n### Assessment\n`;
-        if (ain >= 70) output += `This review appears **genuinely balanced** — mentions both pros and cons.\n`;
-        else if (ain >= 40) output += `This review **leans in one direction** but has some nuance.\n`;
-        else output += `This review is **heavily one-sided** — possible promotional or fake review.\n`;
+        output += `\n### Reading\n`;
+        if (ain >= 70) output += `Wording is balanced — mentions both positive and negative aspects.\n`;
+        else if (ain >= 40) output += `Wording leans in one direction but contains some balancing language.\n`;
+        else output += `Wording is heavily one-sided in tone.\n`;
+
+        output += `\n> **Important:** Wording balance is a weak signal of authenticity. Genuine reviews can be one-sided ` +
+          `(strong opinion), and fake reviews can be linguistically balanced (skilled writer). ` +
+          `Use this for triage only, not as a verdict on whether the review is real.\n`;
 
         output += `\nTokens: ${result.tokens_used}`;
 

@@ -70,8 +70,8 @@ function getClient(): ZPLEngineClient {
 
 const server = new McpServer({
   name: "ZPL Engine MCP",
-  version: "3.1.0",
-  description: "Mathematical stability engine. 51 tools for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN score is a STABILITY measurement, not a prediction or recommendation. v3.1 adds ZPL_MODE (pure/coach) to control whether the AI sees its own bias scores. Created by Ciciu Alexandru-Costinel.",
+  version: "3.2.0",
+  description: "Mathematical stability engine. 55 tools for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN score is a STABILITY measurement, not a prediction or recommendation. v3.2 adds 4 onboarding/utility tools, auto-update check, friendlier signup messages, and hard disclaimers on hypothetical/bias-evaluation tools. Created by Ciciu Alexandru-Costinel.",
 });
 
 // Register all domain-specific tools (31 tools across 7 categories)
@@ -537,17 +537,69 @@ export function createSandboxServer() {
 // Main — connect to stdio transport
 // ---------------------------------------------------------------------------
 
+/**
+ * Non-blocking version check — runs at startup, never crashes the server.
+ * Caches the result for 24h so we don't hit npm on every run.
+ */
+async function checkLatestVersion(): Promise<void> {
+  try {
+    const cacheFile = `${process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"}/zpl-mcp-version-check.json`;
+    const fs = await import("node:fs/promises");
+
+    // Skip if cached within 24h
+    try {
+      const cached = JSON.parse(await fs.readFile(cacheFile, "utf-8"));
+      if (Date.now() - cached.checkedAt < 24 * 60 * 60 * 1000) return;
+    } catch { /* no cache, continue */ }
+
+    const res = await fetch("https://registry.npmjs.org/zpl-engine-mcp/latest", {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return;
+    const { version: latest } = (await res.json()) as { version: string };
+
+    const current = "3.2.0"; // bumped — keep in sync with package.json
+    if (latest && latest !== current) {
+      console.error(`\nℹ️  zpl-engine-mcp v${latest} is available (you have v${current}).`);
+      console.error(`   Update: npm i -g zpl-engine-mcp@latest\n`);
+    }
+
+    // Cache the check
+    await fs.writeFile(cacheFile, JSON.stringify({ checkedAt: Date.now(), latest }));
+  } catch {
+    // Silently ignore — version check must NEVER block the MCP from starting
+  }
+}
+
 async function main() {
+  // Non-blocking — fires in background, doesn't delay startup
+  void checkLatestVersion();
+
   if (!API_KEY) {
-    console.error("╔══════════════════════════════════════════════════════╗");
-    console.error("║  ZPL Engine MCP — API KEY REQUIRED                  ║");
-    console.error("║                                                      ║");
-    console.error("║  Set ZPL_API_KEY in your MCP config env vars.       ║");
-    console.error("║  Get your key: https://zeropointlogic.io/pricing    ║");
-    console.error("║                                                      ║");
-    console.error("║  Example (claude_desktop_config.json):               ║");
-    console.error('║  "env": { "ZPL_API_KEY": "zpl_u_YOUR_KEY" }        ║');
-    console.error("╚══════════════════════════════════════════════════════╝");
+    console.error("");
+    console.error("┌─────────────────────────────────────────────────────────────┐");
+    console.error("│                                                             │");
+    console.error("│    Welcome to ZPL Engine MCP — let's get you set up!       │");
+    console.error("│                                                             │");
+    console.error("│    You need a free API key to use the 51 ZPL tools.        │");
+    console.error("│    Free plan: 5,000 tokens / month. No credit card.        │");
+    console.error("│                                                             │");
+    console.error("│    1. Get your key (10 seconds, no credit card):           │");
+    console.error("│       https://zeropointlogic.io/auth/register              │");
+    console.error("│                                                             │");
+    console.error("│    2. Add it to your MCP config (Claude Desktop example):  │");
+    console.error('│       "env": { "ZPL_API_KEY": "zpl_u_YOUR_KEY_HERE" }      │');
+    console.error("│                                                             │");
+    console.error("│    3. Restart your MCP client. Done.                       │");
+    console.error("│                                                             │");
+    console.error("│    Optional — audit-grade mode (default):                  │");
+    console.error('│       "ZPL_MODE": "pure"   (AI does not see scores)        │');
+    console.error('│       "ZPL_MODE": "coach"  (AI sees scores, can adjust)    │');
+    console.error("│                                                             │");
+    console.error("│    Questions? https://github.com/cicicalex/engine-mcp      │");
+    console.error("│                                                             │");
+    console.error("└─────────────────────────────────────────────────────────────┘");
+    console.error("");
     process.exit(1);
   }
   const transport = new StdioServerTransport();

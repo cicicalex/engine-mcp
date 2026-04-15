@@ -5,7 +5,7 @@
 
 import { z } from "zod";
 import type { Server } from "./helpers.js";
-import { distributionBias, directionalBias, concentrationBias, clampD, ainSignal } from "./helpers.js";
+import { distributionBias, directionalBias, concentrationBias, clampD, ainSignal, ZPL_DISCLAIMER } from "./helpers.js";
 import { ZPLEngineClient } from "../engine-client.js";
 import { addHistory, getHistory } from "../store.js";
 
@@ -87,9 +87,18 @@ Example: "React vs Vue vs Svelte" with performance, ecosystem, learning curve �
   // --- zpl_simulate: what-if scenario analysis ---
   server.tool(
     "zpl_simulate",
-    `What-if scenario analysis. "What happens if BTC drops 20%?" "What if I remove one class from my game?" Run the current state, then the modified state, compare AIN before vs after.
+    `Hypothetical what-if comparison: compare AIN stability of state A versus state B.
 
-Powerful for risk planning, game balancing, portfolio stress testing.`,
+NOT a prediction. NOT a forecast. NOT advice on what will happen if you act.
+Use ONLY for: comparing how two arbitrary distributions differ in stability.
+
+Examples:
+- Compare two portfolio allocations
+- Compare two game balance proposals
+- Compare two team rosters
+
+Do NOT use for: predicting market moves, lottery numbers, sports outcomes,
+or any future event.`,
     {
       scenario: z.string().max(500).describe("Describe the scenario (e.g. 'BTC crashes 20%')"),
       baseline: z.array(z.number()).min(3).max(50).describe("Current state values"),
@@ -144,7 +153,13 @@ Powerful for risk planning, game balancing, portfolio stress testing.`,
         else if (delta > -10) text += `**SLIGHTLY NEGATIVE:** Minor instability introduced (${delta} AIN). Monitor but not critical.\n`;
         else text += `**NEGATIVE:** This scenario significantly destabilizes the system (${delta} AIN). Proceed with caution!\n`;
 
-        text += `\n**Tokens:** ${resultBase.tokens_used + resultMod.tokens_used}`;
+        text += `\n**Tokens:** ${resultBase.tokens_used + resultMod.tokens_used}\n\n`;
+        text += `> ⚠️  **Hypothetical comparison only.** This is not a forecast. ` +
+          `The AIN delta describes how the two distributions differ in stability — ` +
+          `it does NOT predict whether the modified scenario will occur or what the ` +
+          `real-world outcome will be. Do not use for trading, gambling, or other ` +
+          `predictive decisions.\n\n`;
+        text += ZPL_DISCLAIMER;
 
         addHistory({ tool: "zpl_simulate", results: { scenario, delta }, ain_scores: { before: ainBase, after: ainMod } });
         return { content: [{ type: "text" as const, text }] };

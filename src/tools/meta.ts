@@ -34,6 +34,179 @@ function getTokenCost(d: number): number {
 
 export function registerMetaTools(server: Server, getClient: () => ZPLEngineClient) {
 
+  // --- zpl_about: project info, no auth needed ---
+  server.tool(
+    "zpl_about",
+    "Returns metadata about Zero Point Logic: what the engine does, who built it, where to sign up, and how to contact. No API key required — call this first to discover the project.",
+    {},
+    async () => {
+      const text = [
+        "# Zero Point Logic (ZPL)",
+        "",
+        "**What:** A deterministic equilibrium detection engine. Computes an AIN (AI Neutrality Index)",
+        "score in the range 0.1–99.9 that measures the mathematical stability of any input distribution.",
+        "",
+        "**What it is NOT:**",
+        "- Not a prediction engine — does not forecast prices, outcomes, or futures.",
+        "- Not advice — does not recommend buy/sell/play/invest decisions.",
+        "- Not a certification authority — does not endorse projects, products, or content.",
+        "",
+        "**Use cases:** finance (portfolio bias), gaming (loot/RNG fairness), AI/ML (model bias),",
+        "security (vulnerability balance), crypto (tokenomics, whale concentration).",
+        "",
+        "**Total tools:** 51 across 9 categories.",
+        "",
+        "**Pricing:** Free plan = 5,000 tokens/month, no credit card.",
+        "Sign up: https://zeropointlogic.io/auth/register",
+        "",
+        "**Author:** Ciciu Alexandru-Costinel",
+        "**Paper:** https://doi.org/10.5281/zenodo.19320317",
+        "**MCP:** https://github.com/cicicalex/engine-mcp",
+        "**Website:** https://zeropointlogic.io",
+        "",
+        "**Modes (env var ZPL_MODE):**",
+        "  pure (default) — AI does not see scores from text-evaluation tools (audit-grade)",
+        "  coach           — AI sees scores and may self-correct (interactive use)",
+      ].join("\n");
+      return { content: [{ type: "text" as const, text }] };
+    }
+  );
+
+  // --- zpl_quota: show user's remaining tokens this month ---
+  server.tool(
+    "zpl_quota",
+    "Show your remaining ZPL tokens for the current month. Reads from local MCP history (call counts) and the configured plan. Useful for budgeting before running expensive operations.",
+    {},
+    async () => {
+      const apiKey = process.env.ZPL_API_KEY ?? "";
+      if (!apiKey) {
+        return { content: [{ type: "text" as const, text: "No API key set. Call `zpl_about` for setup instructions." }] };
+      }
+      const plan = (process.env.ZPL_PLAN ?? "free").toLowerCase();
+      const info = PLAN_INFO[plan] ?? PLAN_INFO.free;
+      const monthlyLimit = Number(info.tokens.replace(/,/g, ""));
+
+      // Sum history this month
+      const history = getHistory(1000);
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      let monthTokens = 0;
+      let monthOps = 0;
+      for (const h of history) {
+        if (new Date(h.timestamp) < monthStart) continue;
+        monthOps++;
+        // Estimate tokens by typical cost — this is local approximation
+        monthTokens += 5;
+      }
+      const remaining = Math.max(0, monthlyLimit - monthTokens);
+      const pct = Math.round((monthTokens / monthlyLimit) * 100);
+
+      const text = [
+        `# ZPL Token Quota — ${plan.toUpperCase()} plan`,
+        ``,
+        `| Metric | Value |`,
+        `|---|---|`,
+        `| Plan | ${info.price} (${plan}) |`,
+        `| Monthly limit | ${info.tokens} tokens |`,
+        `| Used (local estimate) | ~${monthTokens} tokens (${pct}%) |`,
+        `| Remaining (local estimate) | ~${remaining} tokens |`,
+        `| Operations this month | ${monthOps} |`,
+        `| Max dimension | ${info.maxD} |`,
+        `| Max API keys | ${info.keys} |`,
+        ``,
+        `> Estimates are based on local MCP history. Authoritative quota lives on the engine — visit your dashboard for exact figures: https://zeropointlogic.io/dashboard`,
+      ].join("\n");
+      return { content: [{ type: "text" as const, text }] };
+    }
+  );
+
+  // --- zpl_score_only: minimal output for pipeline integration ---
+  server.tool(
+    "zpl_score_only",
+    "Run a raw computation and return ONLY the AIN score and status — no markdown, no tables, no interpretation. Designed for CI/CD pipelines, scripts, and programmatic consumers that need a clean numeric output.",
+    {
+      d: z.number().int().min(3).max(100).describe("Matrix dimension (3-100)"),
+      bias: z.number().min(0).max(1).describe("Input bias (0.0-1.0)"),
+      samples: z.number().int().min(100).max(50000).optional().describe("Samples (100-50000, default 1000)"),
+    },
+    async ({ d, bias, samples }) => {
+      try {
+        const client = getClient();
+        const result = await client.compute({ d, bias, samples: samples ?? 1000 });
+        const ain = Math.round(result.ain * 100) / 100;
+        const text = JSON.stringify({
+          ain,
+          status: result.ain_status,
+          tokens: result.tokens_used,
+        });
+        return { content: [{ type: "text" as const, text }] };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: (err as Error).message }) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- zpl_validate_input: free input validation, no engine call ---
+  server.tool(
+    "zpl_validate_input",
+    "Validate a distribution before sending it to the engine. Checks: array length, value sums, NaN, negative values, etc. Returns errors and warnings WITHOUT consuming tokens. Use this to catch input mistakes before paying for a compute call.",
+    {
+      values: z.array(z.number()).min(1).describe("The distribution to validate"),
+      kind: z.enum(["weights", "counts", "scores", "rates", "raw"]).optional().describe("What kind of distribution this is (affects validation rules)"),
+      expected_sum: z.number().optional().describe("If set, validates that values sum to this (e.g. 100 for percentages, 1.0 for probabilities)"),
+    },
+    async ({ values, kind, expected_sum }) => {
+      const errors: string[] = [];
+      const warnings: string[] = [];
+
+      if (values.length < 3) errors.push(`Length ${values.length}: most ZPL tools require at least 3 values.`);
+      if (values.length > 100) warnings.push(`Length ${values.length}: very large; consider sampling down to <50.`);
+
+      const negs = values.filter((v) => v < 0).length;
+      if (negs > 0 && (kind === "weights" || kind === "counts" || kind === "rates")) {
+        errors.push(`${negs} negative value(s) found, but ${kind} should be non-negative.`);
+      }
+
+      const nans = values.filter((v) => Number.isNaN(v) || !Number.isFinite(v)).length;
+      if (nans > 0) errors.push(`${nans} NaN/Infinity value(s) — engine will reject this input.`);
+
+      const sum = values.reduce((a, b) => a + b, 0);
+      if (expected_sum !== undefined) {
+        const diff = Math.abs(sum - expected_sum);
+        const tolerance = expected_sum * 0.01; // 1% tolerance
+        if (diff > tolerance) {
+          warnings.push(`Sum is ${sum.toFixed(4)}, expected ${expected_sum} (off by ${diff.toFixed(4)}).`);
+        }
+      }
+
+      const allZero = values.every((v) => v === 0);
+      if (allZero) errors.push(`All values are zero — engine cannot compute on a zero distribution.`);
+
+      const allEqual = values.length > 1 && values.every((v) => v === values[0]);
+      if (allEqual && values[0] !== 0) {
+        warnings.push(`All values equal (${values[0]}). AIN will be near maximum stability — possibly trivial input.`);
+      }
+
+      const ok = errors.length === 0;
+      const text = [
+        `# Input Validation: ${ok ? "✅ OK" : "❌ FAILED"}`,
+        ``,
+        `**Length:** ${values.length} | **Sum:** ${sum.toFixed(4)} | **Min:** ${Math.min(...values)} | **Max:** ${Math.max(...values)}`,
+        ``,
+        errors.length ? `## Errors\n\n${errors.map((e) => `- ${e}`).join("\n")}` : "",
+        warnings.length ? `## Warnings\n\n${warnings.map((w) => `- ${w}`).join("\n")}` : "",
+        ``,
+        ok ? "Safe to send to engine." : "Fix errors before calling the engine — you would waste tokens.",
+        ``,
+        `_Validation cost: 0 tokens (runs locally)._`,
+      ].filter(Boolean).join("\n");
+      return { content: [{ type: "text" as const, text }] };
+    }
+  );
+
   // --- zpl_batch: run multiple computations at once ---
   server.tool(
     "zpl_batch",

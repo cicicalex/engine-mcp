@@ -1,7 +1,7 @@
 {
   "name": "zpl-engine-mcp",
-  "version": "3.1.0",
-  "description": "Mathematical stability engine. 51 tools for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN score (0.1-99.9) is a STABILITY measurement, not a prediction or recommendation. v3.1: ZPL_MODE env var (pure/coach) — pure mode hides scores from AI to prevent reactivity bias on self-evaluation.",
+  "version": "3.2.0",
+  "description": "Mathematical stability engine. 55 tools for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN score is a STABILITY measurement, not a prediction or recommendation. v3.2: 4 new tools (zpl_about, zpl_quota, zpl_score_only, zpl_validate_input), auto-update check, friendly signup message, hard disclaimers on hypothetical/bias tools, RNG sample-size warnings.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {

@@ -67,10 +67,23 @@ export function maybeRedactForPureMode(args: {
 }
 
 /**
+ * Standard footer appended to every tool result.
+ * Reminds the user (and any AI consuming the output) that the AIN score is a
+ * stability measurement only — never a recommendation, prediction, or
+ * financial / gambling / investment advice.
+ */
+export const ZPL_DISCLAIMER =
+  "_ZPL measures mathematical stability of the input distribution. " +
+  "It does NOT predict future outcomes, recommend actions, or constitute " +
+  "financial, gambling, medical, or legal advice._";
+
+/**
  * Format a single compute result as markdown.
  * IP protection: shows AIN score + status only. No bias, no deviation,
  * no p_output, no dimension, no compute time — anything that could hint at
  * the engine's internal method is stripped.
+ *
+ * Always appends ZPL_DISCLAIMER so downstream AIs do not over-interpret the score.
  */
 export function formatResult(label: string, result: ComputeResponse, extras?: Record<string, string | number>): string {
   const ain = Math.round(result.ain * 100);
@@ -84,6 +97,7 @@ export function formatResult(label: string, result: ComputeResponse, extras?: Re
     }
   }
   text += `| Tokens | ${result.tokens_used} |\n`;
+  text += `\n${ZPL_DISCLAIMER}\n`;
   return text;
 }
 

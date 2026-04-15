@@ -41,6 +41,8 @@ const BUDGET_WARN = Number(process.env.ZPL_BUDGET_WARN) || 500;
 const SAVE_HISTORY = process.env.ZPL_SAVE_HISTORY !== "false";
 const RATE_LIMIT_PER_MIN = Number(process.env.ZPL_RATE_LIMIT) || 60;
 
+// ZPL_MODE (pure/coach) lives in tools/helpers.ts so all tool files can share it.
+
 // Simple rate limiter — prevents accidental token drain
 const callLog: number[] = [];
 function checkRateLimit(): boolean {
@@ -68,8 +70,8 @@ function getClient(): ZPLEngineClient {
 
 const server = new McpServer({
   name: "ZPL Engine MCP",
-  version: "3.0.0",
-  description: "Mathematical stability engine. 51 tools for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN score (0.1-99.9) is a STABILITY measurement, not a prediction or recommendation. Created by Ciciu Alexandru-Costinel.",
+  version: "3.1.0",
+  description: "Mathematical stability engine. 51 tools for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN score is a STABILITY measurement, not a prediction or recommendation. v3.1 adds ZPL_MODE (pure/coach) to control whether the AI sees its own bias scores. Created by Ciciu Alexandru-Costinel.",
 });
 
 // Register all domain-specific tools (31 tools across 7 categories)

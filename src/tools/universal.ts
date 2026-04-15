@@ -5,7 +5,7 @@
 
 import { z } from "zod";
 import type { Server } from "./helpers.js";
-import { distributionBias, clampD, ainSignal } from "./helpers.js";
+import { distributionBias, clampD, ainSignal, maybeRedactForPureMode } from "./helpers.js";
 import { ZPLEngineClient } from "../engine-client.js";
 import { addHistory } from "../store.js";
 
@@ -219,7 +219,16 @@ export function registerUniversalTools(server: Server, getClient: () => ZPLEngin
         output += `\n*Analyzed by ZPL Engine v3 — 8N+3 theorem*`;
 
         addHistory({ tool: "zpl_check_response", results: { context: context ?? "text analysis", sentences: sentences.length }, ain_scores: { response: ain } });
-        return { content: [{ type: "text" as const, text: output }] };
+
+        // Pure mode hides the score from the AI to prevent reactivity bias.
+        // Coach mode returns the full output so the AI can self-correct.
+        const finalText = maybeRedactForPureMode({
+          ain,
+          tokens: result.tokens_used,
+          fullText: output,
+          toolName: "zpl_check_response",
+        });
+        return { content: [{ type: "text" as const, text: finalText }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
       }

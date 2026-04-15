@@ -19,6 +19,54 @@ export function ainSignal(ain: number): string {
 }
 
 /**
+ * ZPL_MODE — controls how scores reach the AI assistant.
+ *
+ *  pure  (default): scores are computed and saved to history, but tools that
+ *                   evaluate AI-generated text return only an audit pointer.
+ *                   The assistant does NOT see the AIN inline — prevents
+ *                   reactivity bias / observer effect.
+ *
+ *  coach           : full inline output (current behaviour). The assistant
+ *                    sees the score and may self-correct.
+ *
+ *  Tools that evaluate AI-generated text (zpl_check_response, zpl_news_bias,
+ *  zpl_review_bias) honour this. Tools that score external data
+ *  (zpl_portfolio, zpl_loot_table, etc.) ignore it — there is no AI to
+ *  influence in those cases.
+ */
+export const ZPL_MODE: "pure" | "coach" =
+  (process.env.ZPL_MODE ?? "pure").toLowerCase() === "coach" ? "coach" : "pure";
+
+/**
+ * Wrap a tool result so AI-evaluation outputs respect ZPL_MODE.
+ * In pure mode, returns a redacted summary with an audit ID instead of the
+ * AIN/details. In coach mode, returns the full original text.
+ */
+export function maybeRedactForPureMode(args: {
+  ain: number;
+  tokens?: number;
+  fullText: string;
+  toolName: string;
+}): string {
+  if (ZPL_MODE === "coach") return args.fullText;
+  const id = `pure-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  return [
+    `[ZPL_MODE=pure] ${args.toolName} complete.`,
+    ``,
+    `The AIN score has been computed and recorded in your audit log.`,
+    `This assistant is intentionally not shown the score (prevents reactivity bias).`,
+    ``,
+    `Tracking ID: ${id}`,
+    `Tokens used: ${args.tokens ?? "n/a"}`,
+    ``,
+    `View the score:`,
+    `  https://zeropointlogic.io/dashboard/audit/${id}`,
+    ``,
+    `To allow inline scores during this session, restart the MCP with ZPL_MODE=coach.`,
+  ].join("\n");
+}
+
+/**
  * Format a single compute result as markdown.
  * IP protection: shows AIN score + status only. No bias, no deviation,
  * no p_output, no dimension, no compute time — anything that could hint at

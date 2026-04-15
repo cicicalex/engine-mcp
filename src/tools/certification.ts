@@ -5,7 +5,7 @@
 
 import { z } from "zod";
 import type { Server } from "./helpers.js";
-import { distributionBias, clampD, ainSignal } from "./helpers.js";
+import { distributionBias, clampD, ainSignal, maybeRedactForPureMode } from "./helpers.js";
 import { ZPLEngineClient } from "../engine-client.js";
 import { addHistory } from "../store.js";
 
@@ -140,7 +140,14 @@ export function registerCertificationTools(server: Server, getClient: () => ZPLE
         }
 
         addHistory({ tool: "zpl_news_bias", results: { title, sentences: analysis.sentences }, ain_scores: { article: ain } });
-        return { content: [{ type: "text" as const, text: output }] };
+
+        const finalText = maybeRedactForPureMode({
+          ain,
+          tokens: result.tokens_used,
+          fullText: output,
+          toolName: "zpl_news_bias",
+        });
+        return { content: [{ type: "text" as const, text: finalText }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
       }
@@ -182,7 +189,14 @@ export function registerCertificationTools(server: Server, getClient: () => ZPLE
         output += `\nTokens: ${result.tokens_used}`;
 
         addHistory({ tool: "zpl_review_bias", results: { product }, ain_scores: { review: ain } });
-        return { content: [{ type: "text" as const, text: output }] };
+
+        const finalText = maybeRedactForPureMode({
+          ain,
+          tokens: result.tokens_used,
+          fullText: output,
+          toolName: "zpl_review_bias",
+        });
+        return { content: [{ type: "text" as const, text: finalText }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
       }

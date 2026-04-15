@@ -9,79 +9,110 @@ import { distributionBias, directionalBias, concentrationBias, clampD, ainSignal
 import { ZPLEngineClient } from "../engine-client.js";
 import { addHistory, getHistory } from "../store.js";
 
+// --- Shared schema + handler for zpl_versus / zpl_balance_compare ---
+
+const versusSchema = {
+  title: z.string().max(200).describe("Comparison title (e.g. 'Top 3 Cryptos Q2 2026')"),
+  items: z.array(z.object({
+    name: z.string().max(200),
+    metrics: z.array(z.number().min(0).max(100)).min(3).describe("Metric scores 0-100 (normalized)"),
+  })).min(2).max(10).describe("Items to compare with normalized metrics"),
+  metric_names: z.array(z.string().max(100)).min(3).describe("Names of the metrics"),
+};
+
+function makeVersusHandler(getClient: () => ZPLEngineClient) {
+  return async ({
+    title, items, metric_names,
+  }: {
+    title: string;
+    items: { name: string; metrics: number[] }[];
+    metric_names: string[];
+  }) => {
+    try {
+      const client = getClient();
+      const results: { name: string; ain: number; status: string; tokens: number }[] = [];
+
+      for (const item of items) {
+        const d = clampD(item.metrics.length);
+        const bias = distributionBias(item.metrics);
+        const r = await client.compute({ d, bias, samples: 1000 });
+        results.push({
+          name: item.name,
+          ain: Math.round(r.ain * 100),
+          status: r.ain_status,
+          tokens: r.tokens_used,
+        });
+      }
+
+      results.sort((a, b) => b.ain - a.ain);
+
+      let text = `## ${title}\n\n`;
+
+      // Podium
+      text += `### Ranking by Mathematical Balance\n\n`;
+      for (let i = 0; i < results.length; i++) {
+        const medal = i === 0 ? "1st" : i === 1 ? "2nd" : i === 2 ? "3rd" : `${i + 1}th`;
+        const bar = "=".repeat(Math.round(results[i].ain / 5));
+        text += `**${medal} ${results[i].name}** — AIN ${results[i].ain}/100 (${results[i].status})\n`;
+        text += `\`[${bar}${"·".repeat(20 - Math.round(results[i].ain / 5))}]\`\n\n`;
+      }
+
+      // Metrics table
+      text += `### Metrics Breakdown\n\n`;
+      text += `| Metric |`;
+      for (const item of items) text += ` ${item.name} |`;
+      text += `\n|--------|`;
+      for (let i = 0; i < items.length; i++) text += `--------|`;
+      text += `\n`;
+
+      for (let m = 0; m < metric_names.length; m++) {
+        text += `| ${metric_names[m]} |`;
+        for (const item of items) text += ` ${item.metrics[m]}/100 |`;
+        text += `\n`;
+      }
+
+      text += `\n**Winner:** ${results[0].name} (AIN ${results[0].ain}) — most mathematically balanced\n`;
+      text += `**Total tokens:** ${results.reduce((s, r) => s + r.tokens, 0)}`;
+
+      const scores: Record<string, number> = {};
+      for (const r of results) scores[r.name] = r.ain;
+      addHistory({ tool: "zpl_versus", results: { title, items: items.map((i) => i.name) }, ain_scores: scores });
+
+      return { content: [{ type: "text" as const, text }] };
+    } catch (err) {
+      return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
+    }
+  };
+}
+
 export function registerAdvancedTools(server: Server, getClient: () => ZPLEngineClient) {
 
-  // --- zpl_versus: auto-compare anything (fetches data itself) ---
+  const versusHandler = makeVersusHandler(getClient);
+
+  // --- zpl_versus: auto-compare anything (LEGACY name) ---
   server.tool(
     "zpl_versus",
     `Compare 2-10 items head-to-head with automatic AIN scoring. Provide items with their key metrics — the engine scores each one's balance and picks the most neutral/stable. Works for anything: coins, stocks, frameworks, games, countries, companies.
 
 Example: "BTC vs ETH vs SOL" with market cap, volume, price change → instant AIN ranking.
-Example: "React vs Vue vs Svelte" with performance, ecosystem, learning curve → balanced winner.`,
-    {
-      title: z.string().max(200).describe("Comparison title (e.g. 'Top 3 Cryptos Q2 2026')"),
-      items: z.array(z.object({
-        name: z.string().max(200),
-        metrics: z.array(z.number().min(0).max(100)).min(3).describe("Metric scores 0-100 (normalized)"),
-      })).min(2).max(10).describe("Items to compare with normalized metrics"),
-      metric_names: z.array(z.string().max(100)).min(3).describe("Names of the metrics"),
-    },
-    async ({ title, items, metric_names }) => {
-      try {
-        const client = getClient();
-        const results: { name: string; ain: number; status: string; tokens: number }[] = [];
+Example: "React vs Vue vs Svelte" with performance, ecosystem, learning curve → balanced winner.
 
-        for (const item of items) {
-          const d = clampD(item.metrics.length);
-          const bias = distributionBias(item.metrics);
-          const r = await client.compute({ d, bias, samples: 1000 });
-          results.push({
-            name: item.name,
-            ain: Math.round(r.ain * 100),
-            status: r.ain_status,
-            tokens: r.tokens_used,
-          });
-        }
+**DEPRECATED — use \`zpl_balance_compare\` instead.** (Both still work and call the same handler.)`,
+    versusSchema,
+    versusHandler,
+  );
 
-        results.sort((a, b) => b.ain - a.ain);
+  // --- zpl_balance_compare: new preferred alias for zpl_versus ---
+  server.tool(
+    "zpl_balance_compare",
+    `Compare 2-10 items head-to-head by mathematical balance (AIN scoring). Provide items with their key metrics — each one's STABILITY is measured and ranked. Works for anything: coins, stocks, frameworks, games, countries, companies. STABILITY measurement only — not a recommendation.
 
-        let text = `## ${title}\n\n`;
+Example: "BTC vs ETH vs SOL" with market cap, volume, price change → AIN ranking.
+Example: "React vs Vue vs Svelte" with performance, ecosystem, learning curve → most balanced.
 
-        // Podium
-        text += `### Ranking by Mathematical Balance\n\n`;
-        for (let i = 0; i < results.length; i++) {
-          const medal = i === 0 ? "1st" : i === 1 ? "2nd" : i === 2 ? "3rd" : `${i + 1}th`;
-          const bar = "=".repeat(Math.round(results[i].ain / 5));
-          text += `**${medal} ${results[i].name}** — AIN ${results[i].ain}/100 (${results[i].status})\n`;
-          text += `\`[${bar}${"·".repeat(20 - Math.round(results[i].ain / 5))}]\`\n\n`;
-        }
-
-        // Metrics table
-        text += `### Metrics Breakdown\n\n`;
-        text += `| Metric |`;
-        for (const item of items) text += ` ${item.name} |`;
-        text += `\n|--------|`;
-        for (let i = 0; i < items.length; i++) text += `--------|`;
-        text += `\n`;
-
-        for (let m = 0; m < metric_names.length; m++) {
-          text += `| ${metric_names[m]} |`;
-          for (const item of items) text += ` ${item.metrics[m]}/100 |`;
-          text += `\n`;
-        }
-
-        text += `\n**Winner:** ${results[0].name} (AIN ${results[0].ain}) — most mathematically balanced\n`;
-        text += `**Total tokens:** ${results.reduce((s, r) => s + r.tokens, 0)}`;
-
-        const scores: Record<string, number> = {};
-        for (const r of results) scores[r.name] = r.ain;
-        addHistory({ tool: "zpl_versus", results: { title, items: items.map((i) => i.name) }, ain_scores: scores });
-
-        return { content: [{ type: "text" as const, text }] };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
-      }
-    }
+(Preferred name; \`zpl_versus\` is the legacy alias.)`,
+    versusSchema,
+    versusHandler,
   );
 
   // --- zpl_simulate: what-if scenario analysis ---

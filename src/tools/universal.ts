@@ -9,156 +9,221 @@ import { distributionBias, clampD, ainSignal, maybeRedactForPureMode } from "./h
 import { ZPLEngineClient } from "../engine-client.js";
 import { addHistory } from "../store.js";
 
+// --- Shared schemas (used by old + new aliases) ---
+
+const decideSchema = {
+  question: z.string().max(500).describe("The decision question"),
+  option_a: z.string().max(200).describe("First option name"),
+  option_b: z.string().max(200).describe("Second option name"),
+  a_pros: z.number().min(0).max(10).describe("Option A overall pros score (0-10)"),
+  a_cons: z.number().min(0).max(10).describe("Option A overall cons score (0-10, higher = more cons)"),
+  b_pros: z.number().min(0).max(10).describe("Option B overall pros score"),
+  b_cons: z.number().min(0).max(10).describe("Option B overall cons score"),
+};
+
+const compareSchema = {
+  item_a: z.string().max(200).describe("First item name"),
+  item_b: z.string().max(200).describe("Second item name"),
+  criteria: z.array(z.object({
+    name: z.string().max(100),
+    score_a: z.number().min(0).max(10),
+    score_b: z.number().min(0).max(10),
+  })).min(3).max(20).describe("Comparison criteria with scores for both items"),
+};
+
+const rankSchema = {
+  options: z.array(z.object({
+    name: z.string().max(200),
+    scores: z.array(z.number().min(0).max(10)).min(3).describe("Attribute scores (0-10)"),
+  })).min(2).max(20).describe("Options to rank"),
+  attributes: z.array(z.string().max(100)).optional().describe("Attribute names (for table headers)"),
+};
+
+// --- Shared handler factories (one implementation, two registrations) ---
+
+function makeDecideHandler(getClient: () => ZPLEngineClient) {
+  return async ({
+    question, option_a, option_b, a_pros, a_cons, b_pros, b_cons,
+  }: {
+    question: string; option_a: string; option_b: string;
+    a_pros: number; a_cons: number; b_pros: number; b_cons: number;
+  }) => {
+    try {
+      const client = getClient();
+
+      // Option A: balance between pros and cons
+      const a_scores = [a_pros, 10 - a_cons, (a_pros + (10 - a_cons)) / 2];
+      const b_scores = [b_pros, 10 - b_cons, (b_pros + (10 - b_cons)) / 2];
+
+      const paramA = { d: 3, bias: distributionBias(a_scores), samples: 1000 };
+      const paramB = { d: 3, bias: distributionBias(b_scores), samples: 1000 };
+
+      const [resultA, resultB] = await Promise.all([
+        client.compute(paramA),
+        client.compute(paramB),
+      ]);
+
+      const ainA = Math.round(resultA.ain * 100);
+      const ainB = Math.round(resultB.ain * 100);
+
+      let text = `## ${question}\n\n`;
+      text += `| | ${option_a} | ${option_b} |\n`;
+      text += `|---|---|---|\n`;
+      text += `| Pros | ${a_pros}/10 | ${b_pros}/10 |\n`;
+      text += `| Cons | ${a_cons}/10 | ${b_cons}/10 |\n`;
+      text += `| **AIN** | **${ainA}/100** | **${ainB}/100** |\n`;
+      text += `| Signal | ${ainSignal(ainA)} | ${ainSignal(ainB)} |\n`;
+
+      const diff = Math.abs(ainA - ainB);
+      const winner = ainA > ainB ? option_a : ainB > ainA ? option_b : "Tie";
+
+      if (diff <= 5) text += `\n**Result:** Practically equal. Go with your gut.\n`;
+      else if (diff <= 15) text += `\n**Result:** **${winner}** is slightly more balanced (${Math.max(ainA, ainB)} vs ${Math.min(ainA, ainB)}).\n`;
+      else text += `\n**Result:** **${winner}** is clearly the more balanced choice.\n`;
+
+      text += `**Tokens:** ${resultA.tokens_used + resultB.tokens_used}`;
+
+      addHistory({ tool: "zpl_decide", results: { question }, ain_scores: { [option_a]: ainA, [option_b]: ainB } });
+      return { content: [{ type: "text" as const, text }] };
+    } catch (err) {
+      return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
+    }
+  };
+}
+
+function makeCompareHandler(getClient: () => ZPLEngineClient) {
+  return async ({
+    item_a, item_b, criteria,
+  }: {
+    item_a: string; item_b: string;
+    criteria: { name: string; score_a: number; score_b: number }[];
+  }) => {
+    try {
+      const client = getClient();
+      const scoresA = criteria.map((c) => c.score_a);
+      const scoresB = criteria.map((c) => c.score_b);
+      const d = clampD(criteria.length);
+
+      const biasA = distributionBias(scoresA);
+      const biasB = distributionBias(scoresB);
+
+      const [resultA, resultB] = await Promise.all([
+        client.compute({ d, bias: biasA, samples: 1000 }),
+        client.compute({ d, bias: biasB, samples: 1000 }),
+      ]);
+
+      const ainA = Math.round(resultA.ain * 100);
+      const ainB = Math.round(resultB.ain * 100);
+
+      let text = `## ${item_a} vs ${item_b}\n\n`;
+      text += `| Criteria | ${item_a} | ${item_b} |\n|----------|---|---|\n`;
+      for (const c of criteria) {
+        text += `| ${c.name} | ${c.score_a}/10 | ${c.score_b}/10 |\n`;
+      }
+      text += `| **AIN** | **${ainA}** | **${ainB}** |\n`;
+
+      const winner = ainA > ainB ? item_a : ainB > ainA ? item_b : "Tie";
+      text += `\n**More balanced:** ${winner}\n`;
+      text += `**Tokens:** ${resultA.tokens_used + resultB.tokens_used}`;
+
+      addHistory({ tool: "zpl_compare", results: { item_a, item_b }, ain_scores: { [item_a]: ainA, [item_b]: ainB } });
+      return { content: [{ type: "text" as const, text }] };
+    } catch (err) {
+      return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
+    }
+  };
+}
+
+function makeRankHandler(getClient: () => ZPLEngineClient) {
+  return async ({
+    options, attributes,
+  }: {
+    options: { name: string; scores: number[] }[];
+    attributes?: string[];
+  }) => {
+    try {
+      const client = getClient();
+      const results: { name: string; ain: number; tokens: number }[] = [];
+
+      for (const opt of options) {
+        const d = clampD(opt.scores.length);
+        const bias = distributionBias(opt.scores);
+        const r = await client.compute({ d, bias, samples: 1000 });
+        results.push({ name: opt.name, ain: Math.round(r.ain * 100), tokens: r.tokens_used });
+      }
+
+      results.sort((a, b) => b.ain - a.ain);
+      let text = `## AIN Ranking\n\n`;
+      text += `| Rank | Option | AIN | Signal |\n|------|--------|-----|--------|\n`;
+      for (let i = 0; i < results.length; i++) {
+        text += `| ${i + 1} | ${results[i].name} | ${results[i].ain}/100 | ${ainSignal(results[i].ain)} |\n`;
+      }
+
+      text += `\n**Best:** ${results[0].name} (${results[0].ain}) | **Worst:** ${results[results.length - 1].name} (${results[results.length - 1].ain})\n`;
+      text += `**Tokens:** ${results.reduce((s, r) => s + r.tokens, 0)}`;
+
+      const scores: Record<string, number> = {};
+      for (const r of results) scores[r.name] = r.ain;
+      addHistory({ tool: "zpl_rank", results: { options: options.map((o) => o.name) }, ain_scores: scores });
+      return { content: [{ type: "text" as const, text }] };
+    } catch (err) {
+      return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
+    }
+  };
+}
+
 export function registerUniversalTools(server: Server, getClient: () => ZPLEngineClient) {
 
-  // --- zpl_decide: quick 2-option decision ---
+  const decideHandler = makeDecideHandler(getClient);
+  const compareHandler = makeCompareHandler(getClient);
+  const rankHandler = makeRankHandler(getClient);
+
+  // --- zpl_decide: quick 2-option decision (LEGACY name) ---
   server.tool(
     "zpl_decide",
-    "Compute a balance score (AIN) between 2 options based on their pros/cons. Returns a STABILITY measurement — not a recommendation. The user must interpret the result themselves.",
-    {
-      question: z.string().max(500).describe("The decision question"),
-      option_a: z.string().max(200).describe("First option name"),
-      option_b: z.string().max(200).describe("Second option name"),
-      a_pros: z.number().min(0).max(10).describe("Option A overall pros score (0-10)"),
-      a_cons: z.number().min(0).max(10).describe("Option A overall cons score (0-10, higher = more cons)"),
-      b_pros: z.number().min(0).max(10).describe("Option B overall pros score"),
-      b_cons: z.number().min(0).max(10).describe("Option B overall cons score"),
-    },
-    async ({ question, option_a, option_b, a_pros, a_cons, b_pros, b_cons }) => {
-      try {
-        const client = getClient();
-
-        // Option A: balance between pros and cons
-        const a_scores = [a_pros, 10 - a_cons, (a_pros + (10 - a_cons)) / 2];
-        const b_scores = [b_pros, 10 - b_cons, (b_pros + (10 - b_cons)) / 2];
-
-        const paramA = { d: 3, bias: distributionBias(a_scores), samples: 1000 };
-        const paramB = { d: 3, bias: distributionBias(b_scores), samples: 1000 };
-
-        const [resultA, resultB] = await Promise.all([
-          client.compute(paramA),
-          client.compute(paramB),
-        ]);
-
-        const ainA = Math.round(resultA.ain * 100);
-        const ainB = Math.round(resultB.ain * 100);
-
-        let text = `## ${question}\n\n`;
-        text += `| | ${option_a} | ${option_b} |\n`;
-        text += `|---|---|---|\n`;
-        text += `| Pros | ${a_pros}/10 | ${b_pros}/10 |\n`;
-        text += `| Cons | ${a_cons}/10 | ${b_cons}/10 |\n`;
-        text += `| **AIN** | **${ainA}/100** | **${ainB}/100** |\n`;
-        text += `| Signal | ${ainSignal(ainA)} | ${ainSignal(ainB)} |\n`;
-
-        const diff = Math.abs(ainA - ainB);
-        const winner = ainA > ainB ? option_a : ainB > ainA ? option_b : "Tie";
-
-        if (diff <= 5) text += `\n**Result:** Practically equal. Go with your gut.\n`;
-        else if (diff <= 15) text += `\n**Result:** **${winner}** is slightly more balanced (${Math.max(ainA, ainB)} vs ${Math.min(ainA, ainB)}).\n`;
-        else text += `\n**Result:** **${winner}** is clearly the more balanced choice.\n`;
-
-        text += `**Tokens:** ${resultA.tokens_used + resultB.tokens_used}`;
-
-        addHistory({ tool: "zpl_decide", results: { question }, ain_scores: { [option_a]: ainA, [option_b]: ainB } });
-        return { content: [{ type: "text" as const, text }] };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
-      }
-    }
+    "Compute a balance score (AIN) between 2 options based on their pros/cons. Returns a STABILITY measurement — not a recommendation. The user must interpret the result themselves. **DEPRECATED — use `zpl_balance_check` instead.** (Both still work and call the same handler.)",
+    decideSchema,
+    decideHandler,
   );
 
-  // --- zpl_compare: structured comparison ---
+  // --- zpl_balance_check: new preferred alias for zpl_decide ---
+  server.tool(
+    "zpl_balance_check",
+    "Compute a balance score (AIN) between 2 options based on their pros/cons scores. STABILITY measurement only — not a recommendation. (Preferred name; `zpl_decide` is the legacy alias.)",
+    decideSchema,
+    decideHandler,
+  );
+
+  // --- zpl_compare: structured comparison (LEGACY name) ---
   server.tool(
     "zpl_compare",
-    "Structured comparison of 2 items on the same criteria. Provide scores for both items across multiple dimensions. Returns which is more mathematically balanced.",
-    {
-      item_a: z.string().max(200).describe("First item name"),
-      item_b: z.string().max(200).describe("Second item name"),
-      criteria: z.array(z.object({
-        name: z.string().max(100),
-        score_a: z.number().min(0).max(10),
-        score_b: z.number().min(0).max(10),
-      })).min(3).max(20).describe("Comparison criteria with scores for both items"),
-    },
-    async ({ item_a, item_b, criteria }) => {
-      try {
-        const client = getClient();
-        const scoresA = criteria.map((c) => c.score_a);
-        const scoresB = criteria.map((c) => c.score_b);
-        const d = clampD(criteria.length);
-
-        const biasA = distributionBias(scoresA);
-        const biasB = distributionBias(scoresB);
-
-        const [resultA, resultB] = await Promise.all([
-          client.compute({ d, bias: biasA, samples: 1000 }),
-          client.compute({ d, bias: biasB, samples: 1000 }),
-        ]);
-
-        const ainA = Math.round(resultA.ain * 100);
-        const ainB = Math.round(resultB.ain * 100);
-
-        let text = `## ${item_a} vs ${item_b}\n\n`;
-        text += `| Criteria | ${item_a} | ${item_b} |\n|----------|---|---|\n`;
-        for (const c of criteria) {
-          text += `| ${c.name} | ${c.score_a}/10 | ${c.score_b}/10 |\n`;
-        }
-        text += `| **AIN** | **${ainA}** | **${ainB}** |\n`;
-
-        const winner = ainA > ainB ? item_a : ainB > ainA ? item_b : "Tie";
-        text += `\n**More balanced:** ${winner}\n`;
-        text += `**Tokens:** ${resultA.tokens_used + resultB.tokens_used}`;
-
-        addHistory({ tool: "zpl_compare", results: { item_a, item_b }, ain_scores: { [item_a]: ainA, [item_b]: ainB } });
-        return { content: [{ type: "text" as const, text }] };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
-      }
-    }
+    "Structured comparison of 2 items on the same criteria. Provide scores for both items across multiple dimensions. Returns which is more mathematically balanced. **DEPRECATED — use `zpl_balance_pair` instead.** (Both still work and call the same handler.)",
+    compareSchema,
+    compareHandler,
   );
 
-  // --- zpl_rank: rank N options by AIN ---
+  // --- zpl_balance_pair: new preferred alias for zpl_compare ---
+  server.tool(
+    "zpl_balance_pair",
+    "Structured comparison of 2 items on the same criteria. Provide scores for both items across multiple dimensions. Returns which is more mathematically balanced. STABILITY measurement only — not a recommendation. (Preferred name; `zpl_compare` is the legacy alias.)",
+    compareSchema,
+    compareHandler,
+  );
+
+  // --- zpl_rank: rank N options by AIN (LEGACY name) ---
   server.tool(
     "zpl_rank",
-    "Rank multiple options by mathematical balance. Provide a list of options with their attribute scores. Returns AIN-ranked list from most to least balanced.",
-    {
-      options: z.array(z.object({
-        name: z.string().max(200),
-        scores: z.array(z.number().min(0).max(10)).min(3).describe("Attribute scores (0-10)"),
-      })).min(2).max(20).describe("Options to rank"),
-      attributes: z.array(z.string().max(100)).optional().describe("Attribute names (for table headers)"),
-    },
-    async ({ options, attributes }) => {
-      try {
-        const client = getClient();
-        const results: { name: string; ain: number; tokens: number }[] = [];
+    "Rank multiple options by mathematical balance. Provide a list of options with their attribute scores. Returns AIN-ranked list from most to least balanced. **DEPRECATED — use `zpl_balance_rank` instead.** (Both still work and call the same handler.)",
+    rankSchema,
+    rankHandler,
+  );
 
-        for (const opt of options) {
-          const d = clampD(opt.scores.length);
-          const bias = distributionBias(opt.scores);
-          const r = await client.compute({ d, bias, samples: 1000 });
-          results.push({ name: opt.name, ain: Math.round(r.ain * 100), tokens: r.tokens_used });
-        }
-
-        results.sort((a, b) => b.ain - a.ain);
-        let text = `## AIN Ranking\n\n`;
-        text += `| Rank | Option | AIN | Signal |\n|------|--------|-----|--------|\n`;
-        for (let i = 0; i < results.length; i++) {
-          text += `| ${i + 1} | ${results[i].name} | ${results[i].ain}/100 | ${ainSignal(results[i].ain)} |\n`;
-        }
-
-        text += `\n**Best:** ${results[0].name} (${results[0].ain}) | **Worst:** ${results[results.length - 1].name} (${results[results.length - 1].ain})\n`;
-        text += `**Tokens:** ${results.reduce((s, r) => s + r.tokens, 0)}`;
-
-        const scores: Record<string, number> = {};
-        for (const r of results) scores[r.name] = r.ain;
-        addHistory({ tool: "zpl_rank", results: { options: options.map((o) => o.name) }, ain_scores: scores });
-        return { content: [{ type: "text" as const, text }] };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }], isError: true };
-      }
-    }
+  // --- zpl_balance_rank: new preferred alias for zpl_rank ---
+  server.tool(
+    "zpl_balance_rank",
+    "Rank multiple options by mathematical balance. Provide a list of options with their attribute scores. Returns AIN-ranked list from most to least balanced. STABILITY measurement only — not a recommendation. (Preferred name; `zpl_rank` is the legacy alias.)",
+    rankSchema,
+    rankHandler,
   );
 
   // --- zpl_check_response: analyze ANY text for bias ---

@@ -8,12 +8,16 @@ import { homedir } from "node:os";
 import { join, resolve, normalize } from "node:path";
 
 const home = homedir();
-const rawDir = process.env.ZPL_STORE_DIR ?? join(home, ".zpl-engine");
+// Accept both ZPL_STORE_PATH (README-documented) and ZPL_STORE_DIR (legacy).
+const rawDir = process.env.ZPL_STORE_PATH ?? process.env.ZPL_STORE_DIR ?? join(home, ".zpl-engine");
 const resolvedDir = normalize(resolve(rawDir));
-const STORE_DIR = resolvedDir.startsWith(home)
+// Reject path traversal / escape: the resolved path must be inside $HOME OR inside the OS tmp dir.
+// Anything else (e.g. "../../etc", "C:\\Windows") falls back to the default under $HOME.
+const tmp = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? "";
+const STORE_DIR = resolvedDir.startsWith(home) || (tmp && resolvedDir.startsWith(normalize(resolve(tmp))))
   ? resolvedDir
   : (() => {
-      console.error(`[store] ZPL_STORE_DIR "${rawDir}" is outside home directory. Using default.`);
+      console.error(`[zpl-engine-mcp] store path "${rawDir}" resolves outside home; falling back to default.`);
       return join(home, ".zpl-engine");
     })();
 

@@ -54,7 +54,7 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
         "**Use cases:** finance (portfolio bias), gaming (loot/RNG fairness), AI/ML (model bias),",
         "security (vulnerability balance), crypto (tokenomics, whale concentration).",
         "",
-        "**Total tools:** 63 unique (+ 4 backwards-compat aliases = 67 registered) across 10 categories.",
+        "**Total tools:** 63 unique (+ 4 backwards-compat aliases = 67 registered) across 11 categories.",
         "",
         "**Pricing:** Free plan = 5,000 tokens/month, no credit card.",
         "Sign up: https://zeropointlogic.io/auth/register",
@@ -191,10 +191,17 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
       }
 
       const ok = errors.length === 0;
+      // Use reduce instead of Math.min(...values) — spread blows the stack on very large arrays.
+      let minV = values[0];
+      let maxV = values[0];
+      for (const v of values) {
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
+      }
       const text = [
-        `# Input Validation: ${ok ? "✅ OK" : "❌ FAILED"}`,
+        `# Input Validation: ${ok ? "OK" : "FAILED"}`,
         ``,
-        `**Length:** ${values.length} | **Sum:** ${sum.toFixed(4)} | **Min:** ${Math.min(...values)} | **Max:** ${Math.max(...values)}`,
+        `**Length:** ${values.length} | **Sum:** ${sum.toFixed(4)} | **Min:** ${minV} | **Max:** ${maxV}`,
         ``,
         errors.length ? `## Errors\n\n${errors.map((e) => `- ${e}`).join("\n")}` : "",
         warnings.length ? `## Warnings\n\n${warnings.map((w) => `- ${w}`).join("\n")}` : "",
@@ -274,10 +281,15 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
         return { content: [{ type: "text" as const, text: "```json\n" + JSON.stringify(history, null, 2) + "\n```" }] };
       }
 
+      // Proper CSV escaping — any field that could contain commas/quotes/newlines gets double-quoted.
+      const esc = (s: string | number | undefined): string => {
+        const str = s === undefined || s === null ? "" : String(s);
+        return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+      };
       let csv = "id,timestamp,tool,question,domain,ain_scores\n";
       for (const h of history) {
         const scores = Object.entries(h.ain_scores).map(([k, v]) => `${k}:${v}`).join(";");
-        csv += `${h.id},${h.timestamp},${h.tool},"${(h.question ?? "").replace(/"/g, '""')}",${h.domain ?? ""},${scores}\n`;
+        csv += `${esc(h.id)},${esc(h.timestamp)},${esc(h.tool)},${esc(h.question)},${esc(h.domain)},${esc(scores)}\n`;
       }
 
       return { content: [{ type: "text" as const, text: "```csv\n" + csv + "```\n\n" + `Exported ${history.length} entries.` }] };
@@ -455,7 +467,7 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
         }
       }
 
-      text += `\n---\n*ZPL Engine MCP v2.1.0 — by Ciciu Alexandru-Costinel, Zero Point Logic*`;
+      text += `\n---\n*ZPL Engine MCP v3.4.1 — by Ciciu Alexandru-Costinel, Zero Point Logic*`;
 
       return { content: [{ type: "text" as const, text }] };
     }

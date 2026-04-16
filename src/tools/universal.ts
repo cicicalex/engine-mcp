@@ -284,7 +284,7 @@ export function registerUniversalTools(server: Server, getClient: () => ZPLEngin
         else if (ain >= 40) output += `This response shows **noticeable bias**. It favors one perspective over others.\n`;
         else output += `This response is **heavily biased**. It strongly pushes one viewpoint.\n`;
 
-        output += `\n*Analyzed by ZPL Engine v3 — 8N+3 theorem*`;
+        output += `\n*Analyzed by ZPL Engine*`;
 
         addHistory({ tool: "zpl_check_response", results: { context: context ?? "text analysis", sentences: sentences.length }, ain_scores: { response: ain } });
 

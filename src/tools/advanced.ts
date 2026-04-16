@@ -529,20 +529,24 @@ https://zeropointlogic.io`,
         const limit = Number((PLAN_INFO[plan] ?? PLAN_INFO.free).tokens.replace(/,/g, ""));
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        // Only a few tools save totalTokens explicitly (e.g. zpl_report). For everything else
+        // we use a best-effort per-op estimate so the alert isn't silently always "OK".
         let monthTokens = 0;
+        let monthOps = 0;
         for (const h of history) {
-          if (new Date(h.timestamp) >= monthStart) {
-            const results = h.results as Record<string, unknown>;
-            if (typeof results.totalTokens === "number") monthTokens += results.totalTokens;
-          }
+          if (new Date(h.timestamp) < monthStart) continue;
+          monthOps++;
+          const results = h.results as Record<string, unknown>;
+          if (typeof results.totalTokens === "number") monthTokens += results.totalTokens;
+          else monthTokens += 5; // matches the per-op estimate used by zpl_quota
         }
         const remaining = Math.max(0, limit - monthTokens);
         const threshold = target_tokens ?? 500;
         const alert = remaining <= threshold;
 
-        let text = alert
-          ? `**ALERT: Low budget!** ~${remaining} tokens remaining (threshold: ${threshold}). Upgrade at zeropointlogic.io/pricing`
-          : `**OK:** ~${remaining} tokens remaining (threshold: ${threshold}). No alert.`;
+        const text = alert
+          ? `**ALERT: Low budget (local estimate)!** ~${remaining} tokens remaining across ${monthOps} ops this month (threshold: ${threshold}). Authoritative number: https://zeropointlogic.io/dashboard`
+          : `**OK (local estimate):** ~${remaining} tokens remaining across ${monthOps} ops this month (threshold: ${threshold}). Authoritative number: https://zeropointlogic.io/dashboard`;
         return { content: [{ type: "text" as const, text }] };
       }
 
@@ -555,7 +559,7 @@ https://zeropointlogic.io`,
         const lastAin = Object.values(lastEntry.ain_scores)[0] ?? 0;
         const alert = lastAin < target;
 
-        let text = alert
+        const text = alert
           ? `**ALERT:** Last AIN score (${lastAin}) is below threshold (${target}). Action may be needed.`
           : `**OK:** Last AIN score (${lastAin}) is above threshold (${target}). No alert.`;
         return { content: [{ type: "text" as const, text }] };

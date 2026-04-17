@@ -38,10 +38,17 @@ const API_KEY = resolveZplApiKey();
 // Engine still does the authoritative check; this just fails fast on obvious garbage
 // and prevents accidentally leaking unrelated secrets (e.g. Stripe keys) in the
 // Authorization header.
-// Format: zpl_u_ (user) or zpl_s_ (service) + 48 hex chars = 54 chars total.
-const API_KEY_FORMAT = /^zpl_[us]_[a-f0-9]{48}$/;
+//
+// v3.5.0: Only `zpl_u_...` (user keys) are accepted. Service keys (`zpl_s_...`)
+// are server-side only and must be IP-restricted on the engine (see M2.1).
+// MCP clients must authenticate with user keys so plan limits apply per account.
+// Format: zpl_u_ + 48 hex chars = 54 chars total.
+const API_KEY_FORMAT = /^zpl_u_[a-f0-9]{48}$/;
 function isValidApiKeyFormat(key: string): boolean {
   return API_KEY_FORMAT.test(key);
+}
+function isServiceKey(key: string): boolean {
+  return /^zpl_s_[a-f0-9]{48}$/.test(key);
 }
 
 // API key check moved to main() — allows Smithery sandbox scanning without key
@@ -58,13 +65,26 @@ const SAVE_HISTORY = process.env.ZPL_SAVE_HISTORY !== "false";
 function getClient(): ZPLEngineClient {
   if (!API_KEY) {
     throw new Error(
-      "ZPL API key not configured. Set ZPL_API_KEY (or ZPL_ENGINE_KEY / ZPL_SERVICE_KEY).\n" +
-      "Get your key at https://zeropointlogic.io/pricing"
+      "ZPL API key not configured. Set ZPL_API_KEY (or ZPL_ENGINE_KEY).\n" +
+      "Create a user key at https://zeropointlogic.io/dashboard/api-keys\n" +
+      "(v3.5.0+: service keys `zpl_s_...` are NOT accepted by the MCP — " +
+      "use a per-user `zpl_u_...` key so plan limits apply per account.)"
+    );
+  }
+  if (isServiceKey(API_KEY)) {
+    throw new Error(
+      "Service keys (`zpl_s_...`) are no longer accepted by the ZPL MCP.\n" +
+      "\n" +
+      "Service keys bypass all plan limits and are server-side only.\n" +
+      "MCP clients (Claude Desktop, Claude Code, Cursor, etc.) must use\n" +
+      "a USER key (`zpl_u_...`) so your usage is metered against your plan.\n" +
+      "\n" +
+      "Create a user key:  https://zeropointlogic.io/dashboard/api-keys"
     );
   }
   if (!isValidApiKeyFormat(API_KEY)) {
     throw new Error(
-      "ZPL_API_KEY format invalid. Expected `zpl_u_<48 hex>` or `zpl_s_<48 hex>` (54 chars total).\n" +
+      "ZPL_API_KEY format invalid. Expected `zpl_u_<48 hex>` (54 chars total).\n" +
       "This check runs client-side to avoid sending unrelated secrets to the engine.\n" +
       "Get a correctly formatted key at https://zeropointlogic.io/dashboard/api-keys"
     );
@@ -677,6 +697,33 @@ async function main() {
     console.error("│    Questions? https://github.com/cicicalex/engine-mcp      │");
     console.error("│                                                             │");
     console.error("└─────────────────────────────────────────────────────────────┘");
+    console.error("");
+    process.exit(1);
+  }
+
+  // v3.5.0: block service keys up front, before stdio handshake, so Claude
+  // Desktop / Cursor / Windsurf users get a clear error in the client log
+  // instead of every tool call failing mysteriously.
+  if (isServiceKey(API_KEY)) {
+    console.error("");
+    console.error("┌─────────────────────────────────────────────────────────────┐");
+    console.error("│  Service keys (zpl_s_...) are no longer accepted by the    │");
+    console.error("│  ZPL MCP (v3.5.0+).                                         │");
+    console.error("│                                                             │");
+    console.error("│  Service keys bypass plan limits and are server-side only. │");
+    console.error("│  MCP clients must use a USER key (zpl_u_...) so usage is   │");
+    console.error("│  metered per account.                                       │");
+    console.error("│                                                             │");
+    console.error("│  Create a user key (free, no card):                         │");
+    console.error("│     https://zeropointlogic.io/dashboard/api-keys           │");
+    console.error("└─────────────────────────────────────────────────────────────┘");
+    console.error("");
+    process.exit(1);
+  }
+  if (!isValidApiKeyFormat(API_KEY)) {
+    console.error("");
+    console.error("ZPL_API_KEY format invalid. Expected zpl_u_<48 hex> (54 chars).");
+    console.error("Create a key: https://zeropointlogic.io/dashboard/api-keys");
     console.error("");
     process.exit(1);
   }

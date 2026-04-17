@@ -25,7 +25,7 @@ function buildBaseUrl(u: URL): string {
 function assertProtocolAndNoUserInfo(u: URL, host: string): void {
   if (u.username || u.password) {
     throw new Error(
-      "ZPL_ENGINE_URL must not embed credentials — use ZPL_API_KEY / ZPL_SERVICE_KEY in env instead"
+      "ZPL_ENGINE_URL must not embed credentials — use ZPL_API_KEY in env instead"
     );
   }
 

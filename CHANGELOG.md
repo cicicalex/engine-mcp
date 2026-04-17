@@ -5,6 +5,34 @@ All notable changes to `zpl-engine-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] — 2026-04-17
+
+### Security (BREAKING)
+- **Service keys (`zpl_s_...`) no longer accepted.** MCP is a per-user tool
+  that must authenticate with a user key so plan limits (token/month,
+  dimension cap) apply per account. Service keys bypass all plan limits
+  and are server-side only (engine-to-engine), now also IP-restricted on
+  the engine side in a paired fix (see `zpl-api` M2.1).
+- **`ZPL_SERVICE_KEY` fallback removed** from `resolveZplApiKey()`. Clients
+  that set `ZPL_SERVICE_KEY` with a user key still work — just use
+  `ZPL_API_KEY` or `ZPL_ENGINE_KEY` instead, same format
+  (`zpl_u_<48 hex>`).
+
+### Migration
+If you see `Service keys are no longer accepted by the ZPL MCP` at
+startup:
+1. Create a user API key: https://zeropointlogic.io/dashboard/api-keys
+2. Update MCP config env to `"ZPL_API_KEY": "zpl_u_..."`
+3. Restart your MCP client
+
+### Notes
+- Claude Desktop / Cursor / Windsurf configs **should** pin
+  `"zpl-engine-mcp@latest"` and use `npx -y` so new versions are picked
+  up on restart.
+- This is a semver-MAJOR-level behavioral change gated by the v3.4.4
+  forced-upgrade mechanism — all v2.x installs were already required to
+  reinstall. v3.x users keep working unless they set `ZPL_SERVICE_KEY`.
+
 ## [3.4.4] — 2026-04-17
 
 ### Changed

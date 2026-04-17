@@ -420,15 +420,24 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
       // Key check
       if (!apiKey) {
         text += `**API Key:** NOT SET\n\n`;
-        text += `You need an API key to use ZPL Engine tools.\n`;
+        text += `You need a USER API key to use ZPL Engine tools.\n`;
         text += `1. Create account: https://zeropointlogic.io/auth/register\n`;
         text += `2. Get API key: https://zeropointlogic.io/dashboard/api-keys\n`;
-        text += `3. Add to MCP config env: \`ZPL_API_KEY\`, \`ZPL_ENGINE_KEY\`, or \`ZPL_SERVICE_KEY\` (same \`zpl_u_...\` / \`zpl_s_...\` format)\n`;
+        text += `3. Add to MCP config env: \`ZPL_API_KEY\` (or \`ZPL_ENGINE_KEY\`), format \`zpl_u_<48 hex>\`\n`;
         text += `4. Restart Claude\n`;
+        text += `\n*Note (v3.5.0+): service keys \`zpl_s_...\` are no longer accepted by the MCP.*\n`;
         return { content: [{ type: "text" as const, text }] };
       }
 
-      const keyType = apiKey.startsWith("zpl_s_") ? "Service" : apiKey.startsWith("zpl_u_") ? "User" : "Unknown";
+      if (apiKey.startsWith("zpl_s_")) {
+        text += `**API Key:** SERVICE KEY (not supported)\n\n`;
+        text += `Service keys (\`zpl_s_...\`) bypass plan limits and are server-side only.\n`;
+        text += `MCP clients must use a USER key (\`zpl_u_...\`) so usage is metered per account.\n\n`;
+        text += `Create a user key at https://zeropointlogic.io/dashboard/api-keys\n`;
+        return { content: [{ type: "text" as const, text }] };
+      }
+
+      const keyType = apiKey.startsWith("zpl_u_") ? "User" : "Unknown";
       const keyPrefix = apiKey.slice(0, 8) + "...";
 
       text += `| Setting | Value |\n|---------|-------|\n`;
@@ -466,7 +475,8 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
           text += `- Token limit exceeded for this month\n`;
           text += `\nGenerate a new key: https://zeropointlogic.io/dashboard/api-keys\n`;
         } else if (msg.includes("401")) {
-          text += `\n**Invalid key format.** Make sure your key starts with \`zpl_u_\` or \`zpl_s_\`.\n`;
+          text += `\n**Invalid key format.** Make sure your key starts with \`zpl_u_\` (user key).\n`;
+          text += `Service keys (\`zpl_s_...\`) are no longer accepted by the MCP (v3.5.0+).\n`;
         }
       }
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.cicicalex/engine",
-  "description": "Mathematical stability & bias detection engine. Computes AIN (Neutrality Index) across finance, gaming, AI/ML, security, crypto, and text. 63 tools. AIN is a STABILITY measurement only — never prediction or advice. Paired with the zpl-cli companion for out-of-band AI evaluation (no observer effect).",
+  "description": "AIN stability & bias engine — neutrality index for finance, gaming, AI, crypto (63 tools).",
   "repository": {
     "url": "https://github.com/cicicalex/engine-mcp",
     "source": "github"

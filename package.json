@@ -1,7 +1,7 @@
 {
   "name": "zpl-engine-mcp",
-  "version": "3.4.1",
-  "description": "v3.4.1: 67 tools (63 unique + 4 aliases) across 11 categories. 8 AI Eval tools for model behavioral consistency (sycophancy, refusal balance, language equity, persona drift, safety boundary, hallucination, emotional stability). Mathematical stability engine for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN is a STABILITY measurement only — never prediction or advice.",
+  "version": "3.4.3",
+  "description": "v3.4.3: 67 tools (63 unique + 4 aliases) across 11 categories. 8 AI Eval tools for model behavioral consistency (sycophancy, refusal balance, language equity, persona drift, safety boundary, hallucination, emotional stability). Mathematical stability engine for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN is a STABILITY measurement only — never prediction or advice.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -11,7 +11,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "test": "npm run build && node --test test/engine-url.test.mjs"
   },
   "keywords": [
     "mcp",

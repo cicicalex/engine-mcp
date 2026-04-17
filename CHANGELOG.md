@@ -5,6 +5,25 @@ All notable changes to `zpl-engine-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.3] — 2026-04-16
+
+### Security
+- **Local engine host** — when `ZPL_ENGINE_ALLOW_INSECURE_LOCAL=1`, `localhost` / `127.0.0.1` / `::1` are allowed as hostnames (in addition to `http://` for those hosts). Previously only the scheme was relaxed; the hostname still had to be on `ZPL_ENGINE_HOST_ALLOWLIST`, which made local dev engines awkward.
+
+### Changed
+- **Single version source** — MCP server `version`, npm update check, `zpl_report` footer, and `zpl_account` footer read `version` from `package.json` at runtime via `getMcpPackageVersion()` (no duplicated semver strings in code).
+
+### Added
+- **`npm test`** — builds then runs `node:test` regression tests for `engine-url` (`test/engine-url.test.mjs`).
+
+## [3.4.2] — 2026-04-16
+
+### Security
+- **Engine URL guard** — `ZPL_ENGINE_URL` must point at `engine.zeropointlogic.io` by default, or at hostnames you explicitly allow via `ZPL_ENGINE_HOST_ALLOWLIST` (comma-separated). Blocks accidental or malicious configs that would send your Bearer token to another host. Escape hatch: `ZPL_ENGINE_DISABLE_URL_GUARD=1` (not recommended).
+- **No credentials in URL** — userinfo in `ZPL_ENGINE_URL` is rejected; use env vars for the API key only.
+- **HTTPS by default** — `http://` is only allowed for `localhost` / `127.0.0.1` / `::1` when `ZPL_ENGINE_ALLOW_INSECURE_LOCAL=1` (local dev engines).
+- **No automatic redirects on engine HTTP** — all `fetch` calls to the engine use `redirect: "error"` so a 3xx to an unexpected origin cannot follow with your Authorization header.
+
 ## [3.4.1] — 2026-04-16
 
 Bug-fix pass. No behaviour changes to documented APIs; all 67 tools preserved.
@@ -153,6 +172,8 @@ Removed 5 tools that created false-authority risk. AIN is a STABILITY measuremen
 ### Added
 - Initial ZPL Engine MCP server: 6 tools, 5 domain lenses.
 
+[3.4.3]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.4.3
+[3.4.2]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.4.2
 [3.4.1]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.4.1
 [3.4.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.4.0
 [3.3.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.3.0

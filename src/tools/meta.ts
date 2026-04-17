@@ -6,6 +6,9 @@ import { z } from "zod";
 import type { Server } from "./helpers.js";
 import { clampD, ainSignal } from "./helpers.js";
 import { ZPLEngineClient } from "../engine-client.js";
+import { resolveZplApiKey } from "../env-keys.js";
+import { getValidatedEngineBaseUrl } from "../engine-url.js";
+import { getMcpPackageVersion } from "../package-meta.js";
 import { getHistory, addHistory } from "../store.js";
 
 /** Plan details — MUST match constants.ts on ZPL Main website */
@@ -78,7 +81,7 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
     "Show your remaining ZPL tokens for the current month. Reads from local MCP history (call counts) and the configured plan. Useful for budgeting before running expensive operations.",
     {},
     async () => {
-      const apiKey = process.env.ZPL_API_KEY ?? "";
+      const apiKey = resolveZplApiKey();
       if (!apiKey) {
         return { content: [{ type: "text" as const, text: "No API key set. Call `zpl_about` for setup instructions." }] };
       }
@@ -409,8 +412,8 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
     "Check your API key status and engine connection. Verifies the key is valid, shows key type (user/service), and confirms engine is reachable. Use this to troubleshoot connection issues or verify your setup is correct.",
     {},
     async () => {
-      const apiKey = process.env.ZPL_API_KEY ?? "";
-      const engineUrl = process.env.ZPL_ENGINE_URL ?? "https://engine.zeropointlogic.io";
+      const apiKey = resolveZplApiKey();
+      const engineUrl = getValidatedEngineBaseUrl();
 
       let text = `## ZPL Account Status\n\n`;
 
@@ -420,7 +423,7 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
         text += `You need an API key to use ZPL Engine tools.\n`;
         text += `1. Create account: https://zeropointlogic.io/auth/register\n`;
         text += `2. Get API key: https://zeropointlogic.io/dashboard/api-keys\n`;
-        text += `3. Add to MCP config: \`"ZPL_API_KEY": "zpl_u_your_key_here"\`\n`;
+        text += `3. Add to MCP config env: \`ZPL_API_KEY\`, \`ZPL_ENGINE_KEY\`, or \`ZPL_SERVICE_KEY\` (same \`zpl_u_...\` / \`zpl_s_...\` format)\n`;
         text += `4. Restart Claude\n`;
         return { content: [{ type: "text" as const, text }] };
       }
@@ -467,7 +470,7 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
         }
       }
 
-      text += `\n---\n*ZPL Engine MCP v3.4.1 — by Ciciu Alexandru-Costinel, Zero Point Logic*`;
+      text += `\n---\n*ZPL Engine MCP v${getMcpPackageVersion()} — by Ciciu Alexandru-Costinel, Zero Point Logic*`;
 
       return { content: [{ type: "text" as const, text }] };
     }

@@ -6,6 +6,16 @@ Connects any MCP-compatible AI client (Claude Desktop, Claude Code, Cursor, Wind
 
 **67 tools** (63 unique + 4 backwards-compat aliases) across 11 categories: Core, Finance, Gaming, AI/ML, Security, Crypto, Certification, Advanced, Universal, Meta, and AI Eval.
 
+## What's new in v3.4.3
+
+- **Local dev fix** — with `ZPL_ENGINE_ALLOW_INSECURE_LOCAL=1`, `localhost` / `127.0.0.1` / `::1` are accepted as engine hostnames (not only production). Use with `http://127.0.0.1:PORT` for a local engine.
+- **Version from `package.json`** — MCP `version` field, update check, and report footers no longer hardcode semver strings.
+- **`npm test`** — regression tests for engine URL validation (`npm run build && node --test test/engine-url.test.mjs`).
+
+## What's new in v3.4.2
+
+- **Engine URL hardening** — default allowlist is `engine.zeropointlogic.io` only. Self-hosted engines: set `ZPL_ENGINE_HOST_ALLOWLIST=your.hostname`. Local HTTP: `ZPL_ENGINE_ALLOW_INSECURE_LOCAL=1` with `http://127.0.0.1` only. Optional `ZPL_ENGINE_DISABLE_URL_GUARD=1` disables hostname checks (not recommended). All engine `fetch` calls use `redirect: "error"` so redirects cannot carry your Bearer token to a new origin.
+
 ## What's new in v3.4.1
 
 - **v3.4.1** — Bug fixes: fixed `zpl_consistency_test` bias inversion (inconsistent responses now correctly lower AIN), session-budget double-counting on Claude eval tools (upfront reservation instead of post-increment), `zpl_alert` budget calc that silently always said "OK" (now uses the same estimate as `zpl_quota`), `zpl_validate_input` stack overflow on very large arrays (reduce loop instead of `Math.min(...values)`), version-check cache ignoring its own 24h window (fixed filename instead of PID-suffixed), stale version strings in `zpl_account`/`zpl_report` output. Store now honours `ZPL_STORE_PATH` (documented) in addition to legacy `ZPL_STORE_DIR`. CSV export now escapes embedded commas/quotes. API key format is validated client-side (fail-fast on obvious mis-paste, prevents accidentally leaking unrelated secrets in the Authorization header). Removed an internal engine-method reference from `zpl_check_response` output. Core `zpl_sweep` and `zpl_analyze` now honour the per-minute rate limiter.
@@ -216,7 +226,10 @@ Token cost depends on the dimension tier:
 |----------|----------|---------|-------------|
 | `ZPL_API_KEY` | **Yes*** | — | Your API key (`zpl_u_...` or `zpl_s_...` — 48 hex chars). *Optional for `zpl_about` and `zpl_validate_input`. Format is validated client-side. |
 | `ZPL_MODE` | No | `pure` | `pure` hides AIN from AI on text-eval tools; `coach` exposes it. See Modes above. |
-| `ZPL_ENGINE_URL` | No | `https://engine.zeropointlogic.io` | Custom engine URL |
+| `ZPL_ENGINE_URL` | No | `https://engine.zeropointlogic.io` | Engine base URL (must match host allowlist; see Security) |
+| `ZPL_ENGINE_HOST_ALLOWLIST` | No | — | Extra allowed hostnames (comma-separated), e.g. `staging.engine.example.com` for self-hosted engines |
+| `ZPL_ENGINE_ALLOW_INSECURE_LOCAL` | No | unset | Set to `1` to allow `http://` to localhost / 127.0.0.1 / ::1 **and** to treat those hostnames as allowed (no extra `ZPL_ENGINE_HOST_ALLOWLIST` needed for local dev) |
+| `ZPL_ENGINE_DISABLE_URL_GUARD` | No | unset | Set to `1` to skip hostname allowlist (dangerous; mistyped URLs could exfiltrate your API key) |
 | `ZPL_RATE_LIMIT` | No | `60` | Max requests per minute (applies to `zpl_compute`, `zpl_sweep`, `zpl_analyze`) |
 | `ZPL_BUDGET_WARN` | No | `500` | Token budget warning threshold |
 | `ZPL_MAX_RETRIES` | No | `2` | Retry count for transient engine failures (5xx only) |
@@ -248,6 +261,7 @@ The MCP server **never** sees or contains the engine formula. It sends `(d, bias
 
 - All inputs validated via Zod schemas with strict maxLength limits
 - API keys never logged or stored in plaintext locally
+- **Engine URL allowlist** — requests only go to `engine.zeropointlogic.io` unless you add hosts with `ZPL_ENGINE_HOST_ALLOWLIST`. Rejects userinfo embedded in `ZPL_ENGINE_URL` (use env vars for keys). `fetch(..., { redirect: "error" })` prevents following HTTP redirects that could send your Bearer token elsewhere.
 - In-memory rate limiting (configurable)
 - Exponential backoff retry for transient engine failures (5xx only, not 4xx)
 - Fail-fast startup if `ZPL_API_KEY` is not set (except for no-auth tools)

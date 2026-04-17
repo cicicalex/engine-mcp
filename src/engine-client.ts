@@ -58,6 +58,19 @@ export interface EngineError {
   code: number;
 }
 
+const RATE_LIMIT_PER_MIN = Number(process.env.ZPL_RATE_LIMIT) || 60;
+const callLog: number[] = [];
+
+function checkRateLimit(): boolean {
+  const now = Date.now();
+  while (callLog.length > 0 && callLog[0] < now - 60_000) {
+    callLog.shift();
+  }
+  if (callLog.length >= RATE_LIMIT_PER_MIN) return false;
+  callLog.push(now);
+  return true;
+}
+
 export class ZPLEngineClient {
   private baseUrl: string;
   private apiKey: string;
@@ -99,6 +112,9 @@ export class ZPLEngineClient {
   }
 
   async compute(req: ComputeRequest): Promise<ComputeResponse> {
+    if (!checkRateLimit()) {
+      throw new Error(`Rate limit exceeded (${RATE_LIMIT_PER_MIN}/min). Wait a moment and try again.`);
+    }
     return this.withRetry(async () => {
       const res = await fetch(`${this.baseUrl}/compute`, {
         method: "POST",
@@ -108,6 +124,7 @@ export class ZPLEngineClient {
           bias: req.bias,
           samples: req.samples ?? 1000,
         }),
+        redirect: "error",
         signal: AbortSignal.timeout(15000),
       });
 
@@ -121,12 +138,16 @@ export class ZPLEngineClient {
   }
 
   async sweep(d: number, samples?: number): Promise<SweepResponse> {
+    if (!checkRateLimit()) {
+      throw new Error(`Rate limit exceeded (${RATE_LIMIT_PER_MIN}/min). Wait a moment and try again.`);
+    }
     return this.withRetry(async () => {
       const params = new URLSearchParams({ d: String(d) });
       if (samples) params.set("samples", String(samples));
 
       const res = await fetch(`${this.baseUrl}/sweep?${params}`, {
         headers: this.headers(),
+        redirect: "error",
         signal: AbortSignal.timeout(30000),
       });
 
@@ -141,7 +162,10 @@ export class ZPLEngineClient {
 
   async health(): Promise<HealthResponse> {
     return this.withRetry(async () => {
-      const res = await fetch(`${this.baseUrl}/health`, { signal: AbortSignal.timeout(5000) });
+      const res = await fetch(`${this.baseUrl}/health`, {
+        redirect: "error",
+        signal: AbortSignal.timeout(5000),
+      });
       if (!res.ok) throw new Error(`Engine unreachable: ${res.status}`);
       return res.json() as Promise<HealthResponse>;
     }, 5000);
@@ -151,6 +175,7 @@ export class ZPLEngineClient {
     return this.withRetry(async () => {
       const res = await fetch(`${this.baseUrl}/plans`, {
         headers: this.headers(),
+        redirect: "error",
       });
       if (!res.ok) throw new Error(`Failed to fetch plans: ${res.status}`);
       const data = await res.json() as { plans: PlanInfo[] };

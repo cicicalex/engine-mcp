@@ -24,12 +24,15 @@ import {
   getWatchlist, addToWatchlist, removeFromWatchlist, updateWatchlistItem,
 } from "./store.js";
 import { registerAllTools } from "./tools/index.js";
+import { resolveZplApiKey } from "./env-keys.js";
+import { getValidatedEngineBaseUrl } from "./engine-url.js";
+import { getMcpPackageVersion } from "./package-meta.js";
 
 // ---------------------------------------------------------------------------
 // Configuration from environment
 // ---------------------------------------------------------------------------
 
-const API_KEY = process.env.ZPL_API_KEY ?? process.env.ZPL_ENGINE_KEY ?? "";
+const API_KEY = resolveZplApiKey();
 
 // Defence-in-depth: validate API key format client-side before hitting the engine.
 // Engine still does the authoritative check; this just fails fast on obvious garbage
@@ -42,32 +45,20 @@ function isValidApiKeyFormat(key: string): boolean {
 }
 
 // API key check moved to main() — allows Smithery sandbox scanning without key
-const ENGINE_URL = process.env.ZPL_ENGINE_URL ?? "https://engine.zeropointlogic.io";
+// ZPL_ENGINE_URL validated in getValidatedEngineBaseUrl() (host allowlist, no creds in URL).
 const DEFAULT_D = Math.max(3, Math.min(100, Number(process.env.ZPL_DEFAULT_D) || 9));
 const DEFAULT_SAMPLES = Math.max(100, Math.min(50000, Number(process.env.ZPL_DEFAULT_SAMPLES) || 1000));
 const OUTPUT_STYLE = (process.env.ZPL_OUTPUT ?? "detailed") as "detailed" | "compact";
 const LANGUAGE = process.env.ZPL_LANGUAGE ?? "en";
 const BUDGET_WARN = Number(process.env.ZPL_BUDGET_WARN) || 500;
 const SAVE_HISTORY = process.env.ZPL_SAVE_HISTORY !== "false";
-const RATE_LIMIT_PER_MIN = Number(process.env.ZPL_RATE_LIMIT) || 60;
 
 // ZPL_MODE (pure/coach) lives in tools/helpers.ts so all tool files can share it.
-
-// Simple rate limiter — prevents accidental token drain
-const callLog: number[] = [];
-function checkRateLimit(): boolean {
-  const now = Date.now();
-  // Remove entries older than 1 minute
-  while (callLog.length > 0 && callLog[0] < now - 60_000) callLog.shift();
-  if (callLog.length >= RATE_LIMIT_PER_MIN) return false;
-  callLog.push(now);
-  return true;
-}
 
 function getClient(): ZPLEngineClient {
   if (!API_KEY) {
     throw new Error(
-      "ZPL API key not configured. Set ZPL_API_KEY environment variable.\n" +
+      "ZPL API key not configured. Set ZPL_API_KEY (or ZPL_ENGINE_KEY / ZPL_SERVICE_KEY).\n" +
       "Get your key at https://zeropointlogic.io/pricing"
     );
   }
@@ -78,7 +69,7 @@ function getClient(): ZPLEngineClient {
       "Get a correctly formatted key at https://zeropointlogic.io/dashboard/api-keys"
     );
   }
-  return new ZPLEngineClient(API_KEY, ENGINE_URL);
+  return new ZPLEngineClient(API_KEY, getValidatedEngineBaseUrl());
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +78,7 @@ function getClient(): ZPLEngineClient {
 
 const server = new McpServer({
   name: "ZPL Engine MCP",
-  version: "3.4.1",
+  version: getMcpPackageVersion(),
   description: "Mathematical stability engine. 67 tools (63 unique + 4 backwards-compat aliases). AIN is a STABILITY measurement only — never prediction or advice. v3.3 adds clearer balance-prefixed names, v3.4 adds 8 AI Eval tools for model consistency testing. Created by Ciciu Alexandru-Costinel.",
 });
 
@@ -107,9 +98,6 @@ server.tool(
     samples: z.number().int().min(100).max(50000).optional().default(1000).describe("Number of samples (100-50000). More samples = more precise, more tokens."),
   },
   async ({ d, bias, samples }) => {
-    if (!checkRateLimit()) {
-      return { content: [{ type: "text" as const, text: `⚠️ Rate limit exceeded (${RATE_LIMIT_PER_MIN}/min). Wait a moment and try again.` }], isError: true };
-    }
     try {
       const client = getClient();
       const result = await client.compute({ d, bias, samples });
@@ -145,9 +133,6 @@ server.tool(
     samples: z.number().int().min(100).max(50000).optional().default(1000).describe("Samples per step"),
   },
   async ({ d, samples }) => {
-    if (!checkRateLimit()) {
-      return { content: [{ type: "text" as const, text: `⚠️ Rate limit exceeded (${RATE_LIMIT_PER_MIN}/min). Wait a moment and try again.` }], isError: true };
-    }
     try {
       const client = getClient();
       const result = await client.sweep(d, samples);
@@ -183,9 +168,6 @@ server.tool(
     sweep: z.boolean().optional().default(false).describe("If true, runs a full 19-step sweep instead of single compute"),
   },
   async ({ domain, input, sweep }) => {
-    if (!checkRateLimit()) {
-      return { content: [{ type: "text" as const, text: `⚠️ Rate limit exceeded (${RATE_LIMIT_PER_MIN}/min). Wait a moment and try again.` }], isError: true };
-    }
     try {
       // Validate input size to prevent abuse
       const inputStr = JSON.stringify(input);
@@ -279,18 +261,19 @@ server.tool(
   {},
   async () => {
     try {
-      const client = new ZPLEngineClient("", ENGINE_URL);
+      const base = getValidatedEngineBaseUrl();
+      const client = new ZPLEngineClient("", base);
       const health = await client.health();
 
       return {
         content: [{
           type: "text" as const,
-          text: `ZPL Engine: **${health.status}** (${health.version})\nURL: ${ENGINE_URL}`,
+          text: `ZPL Engine: **${health.status}** (${health.version})\nURL: ${base}`,
         }],
       };
     } catch (err) {
       return {
-        content: [{ type: "text" as const, text: `Engine unreachable at ${ENGINE_URL}: ${(err as Error).message}` }],
+        content: [{ type: "text" as const, text: `Engine health check failed: ${(err as Error).message}` }],
         isError: true,
       };
     }
@@ -533,7 +516,7 @@ server.tool(
       // Summary
       text += `---\n\n`;
       text += `**Total tokens used:** ${totalTokens}\n`;
-      text += `*Report generated by ZPL Engine MCP v3.4.1*\n`;
+      text += `*Report generated by ZPL Engine MCP v${getMcpPackageVersion()}*\n`;
 
       // Save to history
       addHistory({
@@ -588,7 +571,7 @@ async function checkLatestVersion(): Promise<void> {
     if (!res.ok) return;
     const { version: latest } = (await res.json()) as { version: string };
 
-    const current = "3.4.1"; // bumped — keep in sync with package.json
+    const current = getMcpPackageVersion();
     if (latest && latest !== current) {
       console.error(`\nℹ️  zpl-engine-mcp v${latest} is available (you have v${current}).`);
       console.error(`   Update: npm i -g zpl-engine-mcp@latest\n`);
@@ -630,6 +613,12 @@ async function main() {
     console.error("│                                                             │");
     console.error("└─────────────────────────────────────────────────────────────┘");
     console.error("");
+    process.exit(1);
+  }
+  try {
+    getValidatedEngineBaseUrl();
+  } catch (err) {
+    console.error("Fatal:", (err as Error).message);
     process.exit(1);
   }
   const transport = new StdioServerTransport();

@@ -5,6 +5,26 @@ All notable changes to `zpl-engine-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.1] — 2026-04-17
+
+### Changed
+- **Free plan quota corrected to 5,000 tokens/month.** All copy (README,
+  `zpl_about`, `zpl_plans`, `PLAN_INFO` tables) previously referenced
+  **500 tokens** from an early migration draft. Alex's final decision
+  (per `feedback_free_plan_5k.md`): the free plan ships **5,000
+  tokens/month** — enough for hobbyists to explore the engine without
+  immediately hitting a paywall. The engine DB (`plan_limits.free.tokens_per_month = 5000`) has been the source of truth
+  since Session 40; this release just syncs the MCP's static copy.
+- **Token-cost table** in README now shows free-plan reachable calls:
+  5,000 @ D3–D5 (1 tok/call), 2,500 @ D6–D9 (2 tok/call). D10+ requires
+  Basic or higher (free is d=9 capped).
+
+### No behavior change
+- MCP `zpl_plans` tool already reads `tokens_per_month` dynamically from
+  the engine's `/plans` endpoint, so live quota was always correct.
+- Only static copy in `zpl_about`, README, and fallback `PLAN_INFO`
+  tables was stale. No auth, rate-limit, or API changes.
+
 ## [3.5.0] — 2026-04-17
 
 ### Security (BREAKING)

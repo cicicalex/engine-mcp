@@ -24,15 +24,20 @@ import {
   getWatchlist, addToWatchlist, removeFromWatchlist, updateWatchlistItem,
 } from "./store.js";
 import { registerAllTools } from "./tools/index.js";
-import { resolveZplApiKey } from "./env-keys.js";
+import { loadApiKey } from "./config.js";
 import { getValidatedEngineBaseUrl } from "./engine-url.js";
 import { getMcpPackageVersion } from "./package-meta.js";
 
 // ---------------------------------------------------------------------------
-// Configuration from environment
+// Configuration from environment / config file
 // ---------------------------------------------------------------------------
-
-const API_KEY = resolveZplApiKey();
+//
+// v3.6.0: API key is loaded asynchronously at main() boot so ~/.zpl/config.toml
+// (written by `npx zpl-engine-mcp setup`) takes priority over ZPL_API_KEY env.
+// Tool registration still happens at module load, so getClient() reads from
+// the module-scoped `API_KEY` that main() populates before stdio transport
+// is wired up.
+let API_KEY = "";
 
 // Defence-in-depth: validate API key format client-side before hitting the engine.
 // Engine still does the authoritative check; this just fails fast on obvious garbage
@@ -666,6 +671,16 @@ async function checkLatestVersion(): Promise<"ok" | "block"> {
 }
 
 async function main() {
+  // v3.6.0: `npx zpl-engine-mcp setup` runs the device-flow wizard and exits.
+  // Must be the very first thing main() does — before the version check so users
+  // with an outdated install can still *run* setup to get a fresh key flow
+  // (setup itself doesn't call the engine, only zeropointlogic.io).
+  if (process.argv[2] === "setup") {
+    const { runSetup } = await import("./setup.js");
+    await runSetup();
+    process.exit(0);
+  }
+
   // Blocking version check — if a major version is behind, exit before starting.
   // Non-major versions emit a warning and return "ok" immediately.
   const versionStatus = await checkLatestVersion();
@@ -673,30 +688,21 @@ async function main() {
     process.exit(1);
   }
 
+  // v3.6.0: resolve API key from ~/.zpl/config.toml first, env var second.
+  const loaded = await loadApiKey();
+  API_KEY = loaded.key;
+
   if (!API_KEY) {
+    // Friendly first-run message pointing users at `setup`.
+    // All writes go to stderr — stdout is reserved for the MCP JSON-RPC stream.
+    console.error(`[ZPL MCP v${getMcpPackageVersion()}] No API key configured.`);
     console.error("");
-    console.error("┌─────────────────────────────────────────────────────────────┐");
-    console.error("│                                                             │");
-    console.error("│    Welcome to ZPL Engine MCP — let's get you set up!       │");
-    console.error("│                                                             │");
-    console.error("│    You need a free API key to use the 63 ZPL tools.        │");
-    console.error("│    Free plan: 500 tokens / month. No credit card.          │");
-    console.error("│                                                             │");
-    console.error("│    1. Get your key (10 seconds, no credit card):           │");
-    console.error("│       https://zeropointlogic.io/auth/register              │");
-    console.error("│                                                             │");
-    console.error("│    2. Add it to your MCP config (Claude Desktop example):  │");
-    console.error('│       "env": { "ZPL_API_KEY": "zpl_u_YOUR_KEY_HERE" }      │');
-    console.error("│                                                             │");
-    console.error("│    3. Restart your MCP client. Done.                       │");
-    console.error("│                                                             │");
-    console.error("│    Optional — audit-grade mode (default):                  │");
-    console.error('│       "ZPL_MODE": "pure"   (AI does not see scores)        │');
-    console.error('│       "ZPL_MODE": "coach"  (AI sees scores, can adjust)    │');
-    console.error("│                                                             │");
-    console.error("│    Questions? https://github.com/cicicalex/engine-mcp      │");
-    console.error("│                                                             │");
-    console.error("└─────────────────────────────────────────────────────────────┘");
+    console.error("Run this in your terminal:");
+    console.error("  npx zpl-engine-mcp setup");
+    console.error("");
+    console.error("Then restart Claude Desktop.");
+    console.error("");
+    console.error("Docs: https://zeropointlogic.io/docs/mcp-setup");
     console.error("");
     process.exit(1);
   }
@@ -737,9 +743,11 @@ async function main() {
   await server.connect(transport);
 }
 
-// Only auto-run when stdin is piped (MCP client connected).
-// Skip when running in terminal (Smithery scan, testing, etc.)
-if (!process.stdin.isTTY) {
+// Auto-run when:
+//   - stdin is piped (MCP client connected over stdio), OR
+//   - the user invoked `zpl-engine-mcp setup` explicitly from a TTY.
+// Skip otherwise (Smithery scan, module import for testing, etc.)
+if (!process.stdin.isTTY || process.argv[2] === "setup") {
   main().catch((err) => {
     console.error("Fatal:", err);
     process.exit(1);

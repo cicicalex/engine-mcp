@@ -1,8 +1,8 @@
 {
   "name": "zpl-engine-mcp",
-  "version": "3.5.0",
+  "version": "3.6.0",
   "mcpName": "io.github.cicicalex/engine",
-  "description": "v3.5.0: User-key only (ZPL_SERVICE_KEY removed). MCP requires zpl_u_ per-account keys so plan limits apply. 67 tools (63 unique + 4 aliases) across 11 categories. 8 AI Eval tools for model behavioral consistency (sycophancy, refusal balance, language equity, persona drift, safety boundary, hallucination, emotional stability). Mathematical stability engine for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN is a STABILITY measurement only — never prediction or advice.",
+  "description": "v3.6.0: `npx zpl-engine-mcp setup` device-flow wizard auto-writes ~/.zpl/config.toml and patches claude_desktop_config.json — install-to-working in ~15 seconds. User-key only (ZPL_SERVICE_KEY removed). 67 tools (63 unique + 4 aliases) across 11 categories. 8 AI Eval tools for model behavioral consistency (sycophancy, refusal balance, language equity, persona drift, safety boundary, hallucination, emotional stability). Mathematical stability engine for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN is a STABILITY measurement only — never prediction or advice.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -37,7 +37,7 @@
     "bias-detection",
     "portfolio"
   ],
-  "author": "Ciciu Alexandru-Costinel — Zero Point Logic <cicicalex20@gmail.com>",
+  "author": "Ciciu Alexandru-Costinel — Zero Point Logic <contact@zeropointlogic.io>",
   "homepage": "https://zeropointlogic.io",
   "repository": {
     "type": "git",

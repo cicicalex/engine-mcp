@@ -118,8 +118,8 @@ npm install zpl-engine-mcp
 **Or clone and build:**
 
 ```bash
-git clone https://github.com/cicicalex/engine-mcp.git
-cd engine-mcp
+git clone https://github.com/cicicalex/zpl-engine-mcp.git
+cd zpl-engine-mcp
 npm install
 npm run build
 ```

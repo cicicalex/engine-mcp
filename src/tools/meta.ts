@@ -64,7 +64,7 @@ export function registerMetaTools(server: Server, getClient: () => ZPLEngineClie
         "",
         "**Author:** Ciciu Alexandru-Costinel",
         "**Paper:** https://doi.org/10.5281/zenodo.19320317",
-        "**MCP:** https://github.com/cicicalex/engine-mcp",
+        "**MCP:** https://github.com/cicicalex/zpl-engine-mcp",
         "**Website:** https://zeropointlogic.io",
         "",
         "**Modes (env var ZPL_MODE):**",

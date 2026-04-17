@@ -3,7 +3,7 @@
   "name": "io.github.cicicalex/engine",
   "description": "AIN stability & bias engine — neutrality index for finance, gaming, AI, crypto (63 tools).",
   "repository": {
-    "url": "https://github.com/cicicalex/engine-mcp",
+    "url": "https://github.com/cicicalex/zpl-engine-mcp",
     "source": "github"
   },
   "version": "3.6.1",

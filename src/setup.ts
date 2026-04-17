@@ -42,7 +42,7 @@ const POLL_MAX_INTERVAL_MS = 10_000;    // cap interval_s so a stuck server does
 // Using the browser-compat "Mozilla/5.0 (compatible; ...)" pattern — same
 // convention used by well-behaved crawlers (bingbot, slackbot, etc.) — lets
 // us identify the tool while still clearing the challenge.
-const USER_AGENT = `Mozilla/5.0 (compatible; zpl-engine-mcp/${getMcpPackageVersion()}; +https://github.com/cicicalex/engine-mcp)`;
+const USER_AGENT = `Mozilla/5.0 (compatible; zpl-engine-mcp/${getMcpPackageVersion()}; +https://github.com/cicicalex/zpl-engine-mcp)`;
 
 // ---------------------------------------------------------------------------
 // Backend shape — mirrors /api/auth/cli/start and /api/auth/cli/status

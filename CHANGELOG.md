@@ -253,16 +253,16 @@ Removed 5 tools that created false-authority risk. AIN is a STABILITY measuremen
 ### Added
 - Initial ZPL Engine MCP server: 6 tools, 5 domain lenses.
 
-[3.4.3]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.4.3
-[3.4.2]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.4.2
-[3.4.1]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.4.1
-[3.4.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.4.0
-[3.3.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.3.0
-[3.2.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.2.0
-[3.1.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.1.0
-[3.0.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v3.0.0
-[2.3.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v2.3.0
-[2.2.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v2.2.0
-[2.1.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v2.1.0
-[2.0.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v2.0.0
-[1.0.0]: https://github.com/cicicalex/engine-mcp/releases/tag/v1.0.0
+[3.4.3]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v3.4.3
+[3.4.2]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v3.4.2
+[3.4.1]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v3.4.1
+[3.4.0]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v3.4.0
+[3.3.0]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v3.3.0
+[3.2.0]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v3.2.0
+[3.1.0]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v3.1.0
+[3.0.0]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v3.0.0
+[2.3.0]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v2.3.0
+[2.2.0]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v2.2.0
+[2.1.0]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v2.1.0
+[2.0.0]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v2.0.0
+[1.0.0]: https://github.com/cicicalex/zpl-engine-mcp/releases/tag/v1.0.0

@@ -5,6 +5,17 @@ All notable changes to `zpl-engine-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.4] — 2026-04-17
+
+### Changed
+- **Forced upgrade on MAJOR version skew** — at startup, MCP queries `registry.npmjs.org/zpl-engine-mcp/latest` and parses the semver. If the installed MAJOR is behind the latest MAJOR, MCP now exits with a clear reinstall message instead of only warning. MINOR / PATCH behind still warn-and-continue. This protects users from running abandoned installs that miss security patches. Override: `ZPL_SKIP_UPDATE_CHECK=1` for offline / self-hosted / CI. Cache: 1h (was 24h) so post-release users pick up new majors quickly.
+- **Semver-aware comparison** — parses `MAJOR.MINOR.PATCH` and reacts to each level separately; "block / warn features / warn fixes" instead of "any diff warns".
+- **Version check is now awaited** (with ~2.5s network timeout) so the block decision happens before the stdio transport connects. Non-major results return `"ok"` fast.
+
+### Notes for users
+- Claude Desktop / Cursor / Windsurf configs **should** pin `"zpl-engine-mcp@latest"`. `npx -y zpl-engine-mcp@latest` re-resolves the dist-tag on every launch, so restarting the MCP client is all that's needed to pick up a new major after a forced block.
+- Network errors from npm never block — version check is best-effort.
+
 ## [3.4.3] — 2026-04-16
 
 ### Security

@@ -550,43 +550,108 @@ export function createSandboxServer() {
 // ---------------------------------------------------------------------------
 
 /**
- * Non-blocking version check — runs at startup, never crashes the server.
- * Caches the result for 24h so we don't hit npm on every run.
+ * Version check with forced-upgrade policy:
+ *  - MAJOR version behind  -> BLOCK (exit 1, user must reinstall). Breaking changes or security fixes.
+ *  - MINOR version behind  -> WARN but continue. New features available.
+ *  - PATCH version behind  -> WARN quietly. Bug fixes available.
+ *  - Up-to-date / ahead   -> silent.
+ *
+ * Cache: 1h for MAJOR check (so stuck users retry npm soon), 24h for minor/patch warnings.
+ * Set ZPL_SKIP_UPDATE_CHECK=1 to bypass entirely (for self-hosted / offline / CI).
+ * Network errors are non-fatal — never blocks if npm unreachable.
  */
-async function checkLatestVersion(): Promise<void> {
+type SemverParts = { major: number; minor: number; patch: number };
+function parseSemver(v: string): SemverParts | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v);
+  if (!m) return null;
+  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]) };
+}
+/** -1 if a<b, 0 if equal, +1 if a>b, or null if either unparseable. */
+function cmpSemver(a: string, b: string): number | null {
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  if (!pa || !pb) return null;
+  if (pa.major !== pb.major) return pa.major < pb.major ? -1 : 1;
+  if (pa.minor !== pb.minor) return pa.minor < pb.minor ? -1 : 1;
+  if (pa.patch !== pb.patch) return pa.patch < pb.patch ? -1 : 1;
+  return 0;
+}
+
+async function checkLatestVersion(): Promise<"ok" | "block"> {
+  if (process.env.ZPL_SKIP_UPDATE_CHECK === "1") return "ok";
   try {
-    // Fixed file name (no PID) so the 24h cache actually hits across restarts.
     const cacheFile = `${process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"}/zpl-mcp-version-check.json`;
     const fs = await import("node:fs/promises");
 
-    // Skip if cached within 24h
+    // Short cache (1h) — so stuck users retry npm soon after a new major lands.
+    let cachedLatest: string | undefined;
     try {
       const cached = JSON.parse(await fs.readFile(cacheFile, "utf-8"));
-      if (Date.now() - cached.checkedAt < 24 * 60 * 60 * 1000) return;
+      if (Date.now() - cached.checkedAt < 60 * 60 * 1000) {
+        cachedLatest = cached.latest as string;
+      }
     } catch { /* no cache, continue */ }
 
-    const res = await fetch("https://registry.npmjs.org/zpl-engine-mcp/latest", {
-      signal: AbortSignal.timeout(2000),
-    });
-    if (!res.ok) return;
-    const { version: latest } = (await res.json()) as { version: string };
-
-    const current = getMcpPackageVersion();
-    if (latest && latest !== current) {
-      console.error(`\nℹ️  zpl-engine-mcp v${latest} is available (you have v${current}).`);
-      console.error(`   Update: npm i -g zpl-engine-mcp@latest\n`);
+    let latest = cachedLatest;
+    if (!latest) {
+      const res = await fetch("https://registry.npmjs.org/zpl-engine-mcp/latest", {
+        signal: AbortSignal.timeout(2500),
+      });
+      if (!res.ok) return "ok"; // npm unreachable — do not block startup
+      const body = (await res.json()) as { version?: string };
+      if (!body.version) return "ok";
+      latest = body.version;
+      await fs.writeFile(cacheFile, JSON.stringify({ checkedAt: Date.now(), latest })).catch(() => {});
     }
 
-    // Cache the check
-    await fs.writeFile(cacheFile, JSON.stringify({ checkedAt: Date.now(), latest }));
+    const current = getMcpPackageVersion();
+    const ord = cmpSemver(current, latest);
+    if (ord === null || ord >= 0) return "ok"; // up-to-date or ahead (dev build)
+
+    const pc = parseSemver(current)!;
+    const pl = parseSemver(latest)!;
+
+    if (pl.major > pc.major) {
+      // HARD BLOCK — major version behind. Likely breaking change or security fix.
+      console.error("");
+      console.error("┌──────────────────────────────────────────────────────────────┐");
+      console.error("│  zpl-engine-mcp: required upgrade                            │");
+      console.error("├──────────────────────────────────────────────────────────────┤");
+      console.error(`│  You have v${current.padEnd(14)} Latest is v${latest.padEnd(14)}  │`);
+      console.error("│  A new MAJOR version is available — upgrade is required.    │");
+      console.error("│                                                              │");
+      console.error("│  Claude Desktop / Cursor users:                              │");
+      console.error('│    Your config should use  "zpl-engine-mcp@latest"          │');
+      console.error("│    Restart your MCP client to pick up the new version.      │");
+      console.error("│                                                              │");
+      console.error("│  Global install users:                                       │");
+      console.error("│    npm i -g zpl-engine-mcp@latest                            │");
+      console.error("│                                                              │");
+      console.error("│  Offline / self-hosted override (not recommended):           │");
+      console.error("│    env ZPL_SKIP_UPDATE_CHECK=1                               │");
+      console.error("└──────────────────────────────────────────────────────────────┘");
+      console.error("");
+      return "block";
+    }
+
+    // MINOR or PATCH behind — warn but continue.
+    const severity = pl.minor > pc.minor ? "new features" : "bug fixes";
+    console.error(`\nℹ️  zpl-engine-mcp v${latest} is available (${severity}). You have v${current}.`);
+    console.error(`   Update: your config should pin "zpl-engine-mcp@latest". Restart your MCP client.\n`);
+    return "ok";
   } catch {
-    // Silently ignore — version check must NEVER block the MCP from starting
+    // Any unexpected error — never block. Version check is best-effort.
+    return "ok";
   }
 }
 
 async function main() {
-  // Non-blocking — fires in background, doesn't delay startup
-  void checkLatestVersion();
+  // Blocking version check — if a major version is behind, exit before starting.
+  // Non-major versions emit a warning and return "ok" immediately.
+  const versionStatus = await checkLatestVersion();
+  if (versionStatus === "block") {
+    process.exit(1);
+  }
 
   if (!API_KEY) {
     console.error("");

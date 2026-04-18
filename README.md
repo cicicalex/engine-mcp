@@ -6,6 +6,10 @@ Connects any MCP-compatible AI client (Claude Desktop, Claude Code, Cursor, Wind
 
 **67 tools** (63 unique + 4 backwards-compat aliases) across 11 categories: Core, Finance, Gaming, AI/ML, Security, Crypto, Certification, Advanced, Universal, Meta, and AI Eval.
 
+## What's new in v3.7.0
+
+- **Setup wizard auto-configures Cursor and Windsurf, not just Claude Desktop.** Each run patches `claude_desktop_config.json`, `~/.cursor/mcp.json`, and `~/.codeium/windsurf/mcp_config.json` in a single pass. Clients that aren't installed are skipped silently; each patch is isolated so one missing client never blocks the others. Empty pre-existing config files (common for Cursor's stub `{"mcpServers":{}}`) are now handled correctly.
+
 ## What's new in v3.6.1
 
 - **Free plan quota corrected** — all docs/copy now show **5,000 tokens/month** (was erroneously "500 tokens / ~14 days" in early migration draft). Engine-side was already 5,000; this release just syncs the MCP. See [CHANGELOG](./CHANGELOG.md).
@@ -46,12 +50,16 @@ npx zpl-engine-mcp@latest setup
 The wizard will:
 1. Open your browser to approve the CLI (sign up if you don't have an account — free, **5,000 tokens/month**, no credit card)
 2. Save the key to `~/.zpl/config.toml` (chmod 600)
-3. Patch your `claude_desktop_config.json` to add `zpl-engine-mcp` under `mcpServers`
-4. Print "Restart Claude Desktop to activate."
+3. Patch the MCP config of every supported client that's installed:
+   - **Claude Desktop** — `claude_desktop_config.json`
+   - **Cursor** — `~/.cursor/mcp.json`
+   - **Windsurf** — `~/.codeium/windsurf/mcp_config.json`
+4. Print which clients were configured and which to restart.
 
-That's it. Claude Desktop detected? Wizard adds the entry automatically.
-Using Claude Code / Cursor / Windsurf? The wizard prints the exact JSON
-snippet to paste into your client's MCP config.
+That's it. Clients that aren't installed are skipped silently. If you're
+using a client we don't auto-detect (Claude Code, VS Code, Zed, ...), the
+wizard prints the exact JSON snippet to paste into that client's MCP
+config.
 
 <details>
 <summary><strong>Manual setup (advanced)</strong></summary>

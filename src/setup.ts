@@ -12,16 +12,20 @@
  *   It drives the RFC 8628-style device flow against
  *   zeropointlogic.io/api/auth/cli/*, stores the resulting user key in
  *   ~/.zpl/config.toml (which the MCP picks up automatically at next launch),
- *   and patches claude_desktop_config.json so the user doesn't have to touch
- *   JSON at all. Install-to-working in ~15 seconds.
+ *   and auto-patches every supported client's MCP config (Claude Desktop,
+ *   Cursor, Windsurf) so the user doesn't have to touch JSON at all. Clients
+ *   that aren't installed are skipped silently; the snippet is printed once
+ *   as a fallback for non-standard setups (Claude Code, VS Code, Zed).
+ *   Install-to-working in ~15 seconds.
  *
  * Safety:
  *   - Never logs the API key.
  *   - Chmod 600 on the config file (no-op on Windows, which is fine; NTFS ACLs
  *     default to per-user home anyway).
- *   - Preserves any existing mcpServers entries in claude_desktop_config.json.
+ *   - Preserves existing mcpServers entries across all patched configs.
  *   - On malformed config JSON, refuses to write and prints instructions
  *     instead of destroying the file.
+ *   - Each client patch is isolated — one failing doesn't abort the others.
  *   - Bounded polling (10 min max) and always uses `interval_s` from the
  *     backend so a misbehaving server can't DoS itself.
  */
@@ -116,8 +120,6 @@ function openInBrowser(url: string): void {
 
 /**
  * Absolute path to the user-scoped Claude Desktop config for the current OS.
- * We only touch this file; Claude Code / Cursor / Windsurf users continue to
- * paste the snippet by hand (documented in README).
  */
 function claudeDesktopConfigPath(): string {
   const home = homedir();
@@ -133,6 +135,25 @@ function claudeDesktopConfigPath(): string {
   }
   // Linux / other
   return join(home, ".config", "Claude", "claude_desktop_config.json");
+}
+
+/**
+ * Absolute path to the Cursor MCP config. Cursor uses the same
+ * `{ mcpServers: {...} }` shape as Claude Desktop. Path is cross-platform
+ * (`~/.cursor/mcp.json`) — Cursor normalises it on Windows via its own home
+ * resolution, so homedir() is correct on all three OSes.
+ */
+function cursorConfigPath(): string {
+  return join(homedir(), ".cursor", "mcp.json");
+}
+
+/**
+ * Absolute path to the Windsurf (Codeium) MCP config. Same
+ * `{ mcpServers: {...} }` shape as Claude/Cursor. Path is cross-platform
+ * (`~/.codeium/windsurf/mcp_config.json`).
+ */
+function windsurfConfigPath(): string {
+  return join(homedir(), ".codeium", "windsurf", "mcp_config.json");
 }
 
 // ---------------------------------------------------------------------------
@@ -238,19 +259,25 @@ async function writeConfigToml(apiKey: string, userEmail: string): Promise<strin
 }
 
 /**
- * Patch claude_desktop_config.json to include our server entry under
- * `mcpServers.zpl-engine-mcp`. Returns:
+ * Patch a standard MCP config file (Claude Desktop / Cursor / Windsurf all
+ * share the same `{ mcpServers: {...} }` shape). Returns:
  *   - "updated" if we wrote a merged file,
  *   - "created" if the parent dir existed but the file didn't (we wrote fresh),
- *   - "manual" if the parent dir doesn't exist (Claude Desktop not installed)
- *      — in that case we print the snippet instead.
- *   - "malformed" if JSON didn't parse — we refuse to write, print instructions.
+ *   - "manual" if the parent dir doesn't exist (client not installed)
+ *      — caller decides whether to print a snippet.
+ *   - "malformed" if JSON didn't parse — we refuse to write, caller explains.
+ *
+ * Design note: one function for all three clients is intentional. They all
+ * accept the same shape (`{mcpServers: {"zpl-engine-mcp": {command, args, env}}}`),
+ * and keeping the merge logic in one place means malformed/missing handling
+ * can't drift between clients over time.
  */
 type PatchResult = "updated" | "created" | "manual" | "malformed";
 
-async function patchClaudeDesktopConfig(apiKey: string): Promise<{ result: PatchResult; path: string }> {
-  const path = claudeDesktopConfigPath();
-
+export async function patchMcpConfigFile(
+  path: string,
+  apiKey: string,
+): Promise<{ result: PatchResult; path: string }> {
   // Does the file exist?
   let existing: string | undefined;
   try {
@@ -273,6 +300,13 @@ async function patchClaudeDesktopConfig(apiKey: string): Promise<{ result: Patch
 
   // If file exists: merge. If malformed, bail.
   if (existing !== undefined) {
+    // Empty files are common when a client pre-creates the path but leaves
+    // it blank. Treat the same as "file didn't exist" to keep the flow clean.
+    if (existing.trim().length === 0) {
+      const fresh: ClaudeDesktopConfig = { mcpServers: { "zpl-engine-mcp": entry } };
+      await writeFile(path, JSON.stringify(fresh, null, 2), "utf-8");
+      return { result: "created", path };
+    }
     let parsed: ClaudeDesktopConfig;
     try {
       parsed = JSON.parse(existing) as ClaudeDesktopConfig;
@@ -293,7 +327,7 @@ async function patchClaudeDesktopConfig(apiKey: string): Promise<{ result: Patch
   try {
     await stat(dir);
   } catch {
-    // Claude Desktop likely not installed on this machine.
+    // Client likely not installed on this machine.
     return { result: "manual", path };
   }
 
@@ -349,31 +383,67 @@ export async function runSetup(): Promise<void> {
     process.exit(1);
   }
 
-  // Patch Claude Desktop config
-  const patch = await patchClaudeDesktopConfig(approved.api_key).catch((err: Error) => {
-    logErr(`(Claude Desktop config patch failed: ${err.message})`);
-    return { result: "manual" as PatchResult, path: claudeDesktopConfigPath() };
-  });
+  // Patch all three supported clients in parallel. Each client failing (or
+  // simply not being installed) should never block the others — so every
+  // patch is wrapped in its own catch-to-manual.
+  const CLIENTS: Array<{ name: string; path: string; restartHint: string }> = [
+    { name: "Claude Desktop", path: claudeDesktopConfigPath(), restartHint: "Restart Claude Desktop" },
+    { name: "Cursor",         path: cursorConfigPath(),         restartHint: "Restart Cursor" },
+    { name: "Windsurf",       path: windsurfConfigPath(),       restartHint: "Restart Windsurf" },
+  ];
+
+  const patches = await Promise.all(
+    CLIENTS.map(async (c) => {
+      try {
+        const r = await patchMcpConfigFile(c.path, approved.api_key);
+        return { client: c, ...r };
+      } catch (err) {
+        logErr(`(${c.name} config patch failed: ${(err as Error).message})`);
+        return { client: c, result: "manual" as PatchResult, path: c.path };
+      }
+    }),
+  );
 
   log("");
   log(`Connected as ${approved.user_email}`);
   log(`Key saved to ${configPath}`);
+  log("");
 
-  if (patch.result === "updated" || patch.result === "created") {
-    log(`Claude Desktop config updated: ${patch.path}`);
+  const configured = patches.filter((p) => p.result === "updated" || p.result === "created");
+  const malformed  = patches.filter((p) => p.result === "malformed");
+  const manual     = patches.filter((p) => p.result === "manual");
+
+  if (configured.length > 0) {
+    log("Configured clients:");
+    for (const p of configured) {
+      log(`  - ${p.client.name}: ${p.path}`);
+    }
     log("");
-    log("Restart Claude Desktop to activate.");
-  } else if (patch.result === "malformed") {
-    log(`Claude Desktop config exists at ${patch.path} but is not valid JSON.`);
-    log("We didn't modify it. Open it in your editor and paste this under mcpServers:");
-    printSnippet(approved.api_key);
+    const restartLines = Array.from(new Set(configured.map((p) => p.client.restartHint)));
+    for (const line of restartLines) log(`${line} to activate.`);
   } else {
-    // "manual" — no Claude Desktop, or permission error. Show the snippet.
+    log("No MCP-compatible clients detected at default paths.");
+  }
+
+  if (malformed.length > 0) {
     log("");
-    log("Claude Desktop doesn't appear to be installed at the default path.");
-    log("If you're using Claude Code / Cursor / Windsurf, add this to your MCP config:");
+    log("Couldn't auto-patch these configs (existing file isn't valid JSON):");
+    for (const p of malformed) {
+      log(`  - ${p.client.name}: ${p.path}`);
+    }
+    log("Open each file manually and paste the snippet below under mcpServers.");
+  }
+
+  // If at least one client is unresolved (not installed, or malformed),
+  // print the snippet once so the user has a paste-ready fallback.
+  if (malformed.length > 0 || (configured.length === 0 && manual.length > 0)) {
+    if (manual.length > 0 && configured.length === 0) {
+      log("");
+      log("If you're using a client we don't auto-detect (Claude Code, VS Code, Zed, ...), add this to its MCP config:");
+    }
     printSnippet(approved.api_key);
   }
+
   log("");
 }
 

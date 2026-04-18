@@ -5,6 +5,43 @@ All notable changes to `zpl-engine-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] — 2026-04-18
+
+### Added
+- **Setup wizard auto-configures Cursor and Windsurf.** `npx zpl-engine-mcp
+  setup` now patches three MCP config files in a single pass instead of
+  only `claude_desktop_config.json`:
+  - Claude Desktop — existing behaviour preserved
+  - Cursor — `~/.cursor/mcp.json` (same `{mcpServers: {...}}` shape)
+  - Windsurf — `~/.codeium/windsurf/mcp_config.json`
+
+  Context: users installing the MCP into Cursor or Windsurf previously saw
+  a paste-the-snippet fallback, which the weekend funnel audit identified
+  as a meaningful drop-off point. The three clients share the exact same
+  config schema, so one generic `patchMcpConfigFile()` handles all three
+  with identical merge semantics (preserves existing `mcpServers` entries,
+  refuses to write on malformed JSON, writes fresh if the parent dir
+  exists but the file doesn't).
+
+  Each client's patch runs in its own try/catch — one failing client
+  (missing, permission-denied, malformed) never blocks the others, and the
+  user gets a single summary at the end listing which clients were
+  configured plus the relevant restart hints.
+
+### Fixed
+- **Empty pre-existing config files no longer trigger a "malformed" error.**
+  Cursor and some CI environments ship a zero-byte or whitespace-only
+  `mcp.json` stub. We now treat empty files as equivalent to a missing
+  file and write a fresh config, instead of bailing out.
+
+### Changed
+- The wizard's final output lists every client that was configured (one
+  line each) plus the relevant restart hints, rather than focusing on
+  Claude Desktop. If no supported client is detected, it prints the JSON
+  snippet once as a paste-ready fallback.
+- README: "Setup (free, 15 seconds)" section updated to document the
+  three config files the wizard touches.
+
 ## [3.6.1] — 2026-04-17
 
 ### Fixed

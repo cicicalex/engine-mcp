@@ -1,8 +1,8 @@
 {
   "name": "zpl-engine-mcp",
-  "version": "3.7.0",
+  "version": "3.7.1",
   "mcpName": "io.github.cicicalex/engine",
-  "description": "v3.7.0: Setup wizard now auto-configures Claude Desktop, Cursor, and Windsurf in one pass (~/.cursor/mcp.json and ~/.codeium/windsurf/mcp_config.json). Each client patch is isolated so missing clients never block the others. Free plan: 5,000 tokens/month. User-key only (ZPL_SERVICE_KEY removed). 67 tools (63 unique + 4 aliases) across 11 categories. 8 AI Eval tools for model behavioral consistency (sycophancy, refusal balance, language equity, persona drift, safety boundary, hallucination, emotional stability). Mathematical stability engine for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN is a STABILITY measurement only — never prediction or advice.",
+  "description": "v3.7.1: First-run error messages now spell out the 'create free account' step explicitly and lead with `npx zpl-engine-mcp setup` as the recommended path. Same funnel fix surfaces in the startup banner when no key is configured. v3.7.0 auto-configures Claude Desktop, Cursor, and Windsurf in one pass. Free plan: 5,000 tokens/month. User-key only (ZPL_SERVICE_KEY removed). 67 tools (63 unique + 4 aliases) across 11 categories. 8 AI Eval tools for model behavioral consistency (sycophancy, refusal balance, language equity, persona drift, safety boundary, hallucination, emotional stability). Mathematical stability engine for measuring balance and bias in finance, gaming, AI/ML, security, and crypto data. AIN is a STABILITY measurement only — never prediction or advice.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {

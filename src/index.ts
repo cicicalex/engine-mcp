@@ -75,9 +75,13 @@ function getClient(): ZPLEngineClient {
       "QUICK SETUP (15 seconds, recommended):\n" +
       "  npx zpl-engine-mcp setup\n" +
       "\n" +
-      "This opens your browser, you sign in with Google/GitHub or email,\n" +
-      "and it auto-configures Claude Desktop, Cursor, and Windsurf for you.\n" +
-      "Free plan: 5,000 tokens/month, no credit card.\n" +
+      "This opens your browser so you can:\n" +
+      "  1. Create a FREE ZPL account (or sign in if you already have one)\n" +
+      "  2. Approve this device\n" +
+      "  3. Your API key flows back automatically — no copy-paste\n" +
+      "\n" +
+      "The wizard then auto-configures Claude Desktop, Cursor and Windsurf\n" +
+      "for you. Free plan: 5,000 tokens/month, no credit card required.\n" +
       "\n" +
       "Manual alternative: set ZPL_API_KEY env var to a key from\n" +
       "https://zeropointlogic.io/dashboard/api-keys (requires signup first).\n" +
@@ -709,16 +713,30 @@ async function main() {
   API_KEY = loaded.key;
 
   if (!API_KEY) {
-    // Friendly first-run message pointing users at `setup`.
+    // Friendly first-run message. First-time users are MOST of the audience
+    // (~1300 npm downloads, only a fraction have accounts yet) so spell out
+    // the create-account step explicitly — the wizard handles all of it.
     // All writes go to stderr — stdout is reserved for the MCP JSON-RPC stream.
-    console.error(`[ZPL MCP v${getMcpPackageVersion()}] No API key configured.`);
     console.error("");
-    console.error("Run this in your terminal:");
-    console.error("  npx zpl-engine-mcp setup");
-    console.error("");
-    console.error("Then restart Claude Desktop.");
-    console.error("");
-    console.error("Docs: https://zeropointlogic.io/docs/mcp-setup");
+    console.error(`┌──────────────────────────────────────────────────────────────┐`);
+    console.error(`│  ZPL MCP v${getMcpPackageVersion().padEnd(8)} — first-time setup                      │`);
+    console.error(`├──────────────────────────────────────────────────────────────┤`);
+    console.error(`│                                                              │`);
+    console.error(`│  Run this in your terminal (NOT inside Claude/Cursor):      │`);
+    console.error(`│                                                              │`);
+    console.error(`│     npx zpl-engine-mcp setup                                 │`);
+    console.error(`│                                                              │`);
+    console.error(`│  The wizard opens your browser so you can:                  │`);
+    console.error(`│    1. Create a free ZPL account (no credit card)            │`);
+    console.error(`│    2. Approve this device                                    │`);
+    console.error(`│    3. Your API key flows back — no copy-paste               │`);
+    console.error(`│                                                              │`);
+    console.error(`│  Free plan: 5,000 tokens/month.                              │`);
+    console.error(`│  Docs: https://zeropointlogic.io/docs/mcp-setup             │`);
+    console.error(`│                                                              │`);
+    console.error(`│  Then restart Claude Desktop / Cursor to pick up the key.   │`);
+    console.error(`│                                                              │`);
+    console.error(`└──────────────────────────────────────────────────────────────┘`);
     console.error("");
     process.exit(1);
   }
